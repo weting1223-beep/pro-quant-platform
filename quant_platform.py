@@ -17,7 +17,9 @@ st.set_page_config(
 
 # --- 2. 側邊欄導航 (選單優先) ---
 st.sidebar.title("🧭 導航選單")
+# 這裡加入了蒙地卡羅模擬的選項
 page = st.sidebar.radio("前往頁面", ["📈 量化回測分析", "🎲 蒙地卡羅模擬", "🧬 FFT 週期分析", "📊 基本面數據", "📚 投資百科辭典", "🎧 財經資源"])
+
 st.sidebar.markdown("---")
 
 # --- 核心函數區 ---
@@ -49,7 +51,7 @@ def calculate_indicators(df, ma_short, ma_long):
     df['RSI'] = 100 - (100 / (1 + rs))
     return df
 
-# --- 頁面 1: 量化回測分析 ---
+# --- 頁面 1: 量化回測分析 (已加入成交量 Volume) ---
 def page_analysis():
     st.title("📈 股票量化回測儀表板")
     st.markdown("支援 **台股 (TW)** 與 **美股 (US)**，請輸入代號開始分析。")
@@ -95,37 +97,87 @@ def page_analysis():
                 
                 market_ret = (df['Close'].iloc[-1] - df['Close'].iloc[0]) / df['Close'].iloc[0]
                 
-                # --- 修改繪圖區塊開始 ---
-                # 1. 改成 3 列 (K線, 成交量, RSI)
+                # --- 繪圖區塊 (已升級加入成交量) ---
                 fig = make_subplots(rows=3, cols=1, shared_xaxes=True, 
                                     row_heights=[0.6, 0.2, 0.2], vertical_spacing=0.03,
                                     subplot_titles=(f"{ticker} 走勢圖", "成交量", "RSI 強弱指標"))
                 
-                # 2. Row 1: K線 (維持不變)
+                # Row 1: K線
                 fig.add_trace(go.Scatter(x=df.index, y=df['Close'], name="收盤價", line=dict(color='white')), row=1, col=1)
                 fig.add_trace(go.Scatter(x=df.index, y=df['MA_Short'], name=f"MA {ma_short}", line=dict(color='yellow', width=1)), row=1, col=1)
                 fig.add_trace(go.Scatter(x=df.index, y=df['MA_Long'], name=f"MA {ma_long}", line=dict(color='cyan', width=1)), row=1, col=1)
                 
-                # 3. Row 1: 買賣訊號 (維持不變)
+                # Row 1: 買賣訊號
                 buys = df[df['Position'] == 1]
                 sells = df[df['Position'] == -1]
                 fig.add_trace(go.Scatter(x=buys.index, y=df.loc[buys.index]['Close'], mode='markers', marker=dict(symbol='triangle-up', color='lime', size=15), name='買進'), row=1, col=1)
                 fig.add_trace(go.Scatter(x=sells.index, y=df.loc[sells.index]['Close'], mode='markers', marker=dict(symbol='triangle-down', color='red', size=15), name='賣出'), row=1, col=1)
 
-                # 4. Row 2: 成交量 (新增!)
-                colors = ['red' if row['Open'] - row['Close'] >= 0 else 'green' for index, row in df.iterrows()]
+                # Row 2: 成交量 (新增)
+                # 漲紅跌綠 (台股習慣)，若需美股習慣(漲綠跌紅)可自行互換顏色
+                colors = ['red' if row['Close'] >= row['Open'] else 'green' for index, row in df.iterrows()]
                 fig.add_trace(go.Bar(x=df.index, y=df['Volume'], name="成交量", marker_color=colors), row=2, col=1)
 
-                # 5. Row 3: RSI (原本的 Row 2 移下來)
+                # Row 3: RSI
                 fig.add_trace(go.Scatter(x=df.index, y=df['RSI'], name="RSI", line=dict(color='orange')), row=3, col=1)
                 fig.add_hline(y=30, row=3, col=1, line_dash="dot", line_color="gray")
                 fig.add_hline(y=70, row=3, col=1, line_dash="dot", line_color="gray")
                 
                 fig.update_layout(template="plotly_dark", height=800, title_text=f"{ticker} 技術分析圖")
                 st.plotly_chart(fig, use_container_width=True)
-                # --- 修改繪圖區塊結束 ---
+                st.success(f"📊 區間漲跌幅 (Buy & Hold): {market_ret*100:.2f}%")
 
-# --- 頁面 2: FFT 週期分析 ---
+# --- 頁面 2: 蒙地卡羅模擬 (補上這段缺失的程式碼) ---
+def page_monte_carlo():
+    st.title("🎲 蒙地卡羅股價預測")
+    st.markdown("利用 **隨機過程 (Random Walk)** 模擬未來走勢，計算潛在的風險與報酬。")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        ticker = st.text_input("輸入代號", "2330.TW")
+    with col2:
+        days = st.slider("預測未來幾天?", 30, 180, 90)
+    
+    if st.button("🔮 開始模擬未來平行宇宙"):
+        with st.spinner("正在計算機率分佈..."):
+            df = get_stock_data(ticker.upper().strip(), "2023-01-01", datetime.date.today())
+            
+            if not df.empty:
+                # 1. 計算參數
+                log_returns = np.log(df['Close'] / df['Close'].shift(1))
+                u = log_returns.mean()
+                var = log_returns.var()
+                drift = u - (0.5 * var)
+                stdev = log_returns.std()
+                
+                # 2. 模擬
+                simulations = 50
+                Z = np.random.normal(0, 1, (days, simulations))
+                daily_returns = np.exp(drift + stdev * Z)
+                
+                price_paths = np.zeros_like(daily_returns)
+                price_paths[0] = df['Close'].iloc[-1]
+                
+                for t in range(1, days):
+                    price_paths[t] = price_paths[t-1] * daily_returns[t]
+                
+                # 3. 繪圖
+                fig = go.Figure()
+                for i in range(simulations):
+                    fig.add_trace(go.Scatter(y=price_paths[:, i], mode='lines', opacity=0.3, showlegend=False, line=dict(width=1)))
+                
+                mean_path = price_paths.mean(axis=1)
+                fig.add_trace(go.Scatter(y=mean_path, mode='lines', name="平均預測路徑", line=dict(color='yellow', width=3)))
+                
+                fig.update_layout(title=f"未來 {days} 天的 50 種可能走勢模擬", template="plotly_dark", yaxis_title="預測股價")
+                st.plotly_chart(fig, use_container_width=True)
+                
+                st.success(f"統計結果：在 {simulations} 次模擬中，{days} 天後的平均價格為 **{mean_path[-1]:.2f}** 元。")
+                st.warning("⚠️ 注意：這只是數學機率模擬，不代表真實行情預測。")
+            else:
+                st.error("❌ 找不到資料，請檢查代號。")
+
+# --- 頁面 3: FFT 週期分析 ---
 def page_fft():
     st.title("🧬 股價頻譜分析 (FFT)")
     st.markdown("利用訊號處理技術，找出隱藏的主力操盤週期。")
@@ -174,7 +226,7 @@ def page_fft():
                 dominant_period = periods[valid_mask][peak_idx]
                 st.success(f"🕵️‍♂️ 偵測結果：這檔股票最明顯的波動週期約為 **{dominant_period:.1f} 天**。")
 
-# --- 頁面 3: 基本面數據 (台股修正版) ---
+# --- 頁面 4: 基本面數據 ---
 def page_fundamental():
     st.title("📊 基本面透視")
     st.markdown("快速查詢 **美股 (US)** 數據。**台股 (TW)** 因資料源限制，提供直達連結。")
@@ -183,7 +235,6 @@ def page_fundamental():
     
     if st.button("🔍 查詢"):
         if ".TW" in ticker:
-            # 台股處理：直接給連結
             st.warning(f"⚠️ {ticker} 為台股，免費資料源暫不支援詳細財報數據。")
             st.markdown(f"""
             ### 👉 建議前往以下網站查看最準確數據：
@@ -191,7 +242,6 @@ def page_fundamental():
             * [Goodinfo 台灣股市資訊網：{ticker}](https://goodinfo.tw/tw/StockDetail.asp?STOCK_ID={ticker.replace('.TW', '')})
             """)
         else:
-            # 美股處理：維持原樣
             info = get_stock_info(ticker)
             if info:
                 col1, col2, col3, col4 = st.columns(4)
@@ -210,12 +260,11 @@ def page_fundamental():
             else:
                 st.error("❌ 找不到資料。")
 
-# --- 頁面 4: 投資百科辭典 (200大辭典) ---
+# --- 頁面 5: 投資百科辭典 ---
 def page_learn():
     st.title("📚 投資百科辭典")
     st.markdown("收錄市場最常見的術語，不懂的詞這裡查！")
     
-    # 建立辭典資料庫
     terms = {
         "📊 技術分析": {
             "KD 指標": "隨機指標，由 K 值與 D 值組成。K>D 黃金交叉通常視為買點，K<D 死亡交叉視為賣點。",
@@ -248,16 +297,11 @@ def page_learn():
         }
     }
 
-    # 選擇分類
     category = st.selectbox("請選擇分類", list(terms.keys()))
-    
-    # 選擇詞彙
     term = st.selectbox("請選擇詞彙", list(terms[category].keys()))
-    
-    # 顯示解釋
     st.info(f"### 💡 {term}\n\n{terms[category][term]}")
 
-# --- 頁面 5: 財經資源 (移除破圖) ---
+# --- 頁面 6: 財經資源 ---
 def page_resources():
     st.title("🎧 優質財經資源推薦")
     st.markdown("點擊連結直接前往收聽/觀看。")
@@ -282,17 +326,11 @@ def page_resources():
         """)
         st.caption("註：若連結失效，請至平台搜尋名稱。")
 
-# --- 主程式路由 ---
-# --- 主程式路由 (請檢查您的最後這段程式碼是否長這樣) ---
-
+# --- 主程式路由 (Router) ---
 if page == "📈 量化回測分析":
     page_analysis()
-
-# 👇 這是新加入的！
 elif page == "🎲 蒙地卡羅模擬":
     page_monte_carlo()
-# 👆 新加入結束
-
 elif page == "🧬 FFT 週期分析":
     page_fft()
 elif page == "📊 基本面數據":
@@ -301,52 +339,6 @@ elif page == "📚 投資百科辭典":
     page_learn()
 elif page == "🎧 財經資源":
     page_resources()
-    # --- 頁面 6: 蒙地卡羅模擬 (新增功能) ---
-def page_monte_carlo():
-    st.title("🎲 蒙地卡羅股價預測")
-    st.markdown("利用 **隨機過程 (Random Walk)** 模擬未來走勢，計算潛在的風險與報酬。")
-    
-    col1, col2 = st.columns(2)
-    ticker = col1.text_input("輸入代號", "2330.TW")
-    days = col2.slider("預測未來幾天?", 30, 180, 90)
-    
-    if st.button("🔮 開始模擬未來平行宇宙"):
-        df = get_stock_data(ticker.upper().strip(), "2023-01-01", datetime.date.today())
-        
-        if not df.empty:
-            # 1. 計算日報酬率的平均與標準差
-            log_returns = np.log(df['Close'] / df['Close'].shift(1))
-            u = log_returns.mean()
-            var = log_returns.var()
-            drift = u - (0.5 * var) # 漂移項
-            stdev = log_returns.std() # 波動率
-            
-            # 2. 模擬 50 次未來的走勢
-            simulations = 50
-            Z = np.random.normal(0, 1, (days, simulations))
-            daily_returns = np.exp(drift + stdev * Z)
-            
-            price_paths = np.zeros_like(daily_returns)
-            price_paths[0] = df['Close'].iloc[-1]
-            
-            for t in range(1, days):
-                price_paths[t] = price_paths[t-1] * daily_returns[t]
-            
-            # 3. 繪圖
-            fig = go.Figure()
-            # 畫出 50 條模擬線
-            for i in range(simulations):
-                fig.add_trace(go.Scatter(y=price_paths[:, i], mode='lines', opacity=0.3, showlegend=False, line=dict(width=1)))
-            
-            # 畫出平均線
-            mean_path = price_paths.mean(axis=1)
-            fig.add_trace(go.Scatter(y=mean_path, mode='lines', name="平均預測路徑", line=dict(color='yellow', width=3)))
-            
-            fig.update_layout(title=f"未來 {days} 天的 50 種可能走勢模擬", template="plotly_dark", yaxis_title="預測股價")
-            st.plotly_chart(fig, use_container_width=True)
-            
-            st.success(f"統計結果：在 {simulations} 次模擬中，{days} 天後的平均價格為 **{mean_path[-1]:.2f}** 元。")
-            st.warning("⚠️ 注意：這只是數學機率模擬，不代表真實行情預測。")
 
 # --- 流量統計 (移到底部角落) ---
 st.sidebar.markdown("---")
@@ -359,6 +351,5 @@ with st.sidebar.expander("📊 網站流量資訊", expanded=False):
     st.caption(f"⏰ 時間：{time_str}")
     
     # 瀏覽計數器
-    badge_url = "https://visitor-badge.laobi.icu/badge?page_id=pro_quant_platform_v2"
+    badge_url = "https://visitor-badge.laobi.icu/badge?page_id=pro_quant_platform_v3"
     st.image(badge_url, caption="總瀏覽人次")
-
