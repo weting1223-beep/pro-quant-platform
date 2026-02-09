@@ -264,33 +264,40 @@ def page_analysis():
                 st.success(f"📊 區間漲跌幅 (Buy & Hold): {market_ret*100:.2f}%")
 
 # --- 頁面 2: ETF 籌碼透視 (雙重保險版) ---
+# --- 決策導向版 ETF 頁面 ---
 def page_etf_analysis():
-    st.title("🦅 ETF 籌碼透視 (大盤預測)")
-    st.markdown("拆解 ETF 內部成分股的漲跌與權重，預判大盤動力。")
+    st.title("🦅 ETF 籌碼透視 (大盤多空儀表板)")
+    st.markdown("### 🎯 策略目標：透過大盤成分股廣度，判斷今日是否適合進場。")
 
     etf_list = {
-        "0050.TW": "元大台灣50 (大盤)",
-        "0056.TW": "元大高股息",
-        "00878.TW": "國泰永續高股息",
-        "00929.TW": "復華台灣科技優息",
-        "00940.TW": "元大台灣價值高息",
-        "006208.TW": "富邦台50"
+        "0050.TW": "元大台灣50 (大盤權值)",
+        "0056.TW": "元大高股息 (中型價值)",
+        "00878.TW": "國泰永續高股息 (AI+金融)",
+        "00929.TW": "復華台灣科技優息 (電子)",
+        "00940.TW": "元大台灣價值高息 (巨型)",
+        "006208.TW": "富邦台50 (大盤權值)"
     }
     
     selected_etf = st.selectbox("選擇要分析的 ETF", list(etf_list.keys()), format_func=lambda x: f"{x} {etf_list[x]}")
 
-    if st.button("🔍 分析成分股動力"):
-        with st.spinner(f"正在拆解 {selected_etf} 的成分股與籌碼..."):
+    if st.button("🔍 啟動多空掃描"):
+        with st.spinner(f"正在掃描 {selected_etf} 內部結構..."):
             
             # 1. 取得成分股 (優先爬蟲 -> 失敗自動切換保底數據)
             df_holdings, source_msg = get_etf_holdings(selected_etf)
             
             if not df_holdings.empty:
-                st.info(f"資料來源：{source_msg}")
+                st.toast(f"資料來源：{source_msg}") # 用 Toast 提示比較不干擾
                 
-                # 2. 進行即時籌碼運算 (這裡的漲跌幅是即時的，不受爬蟲失敗影響)
+                # 2. 進行即時籌碼運算
                 top_10 = df_holdings.head(10).copy()
                 realtime_data = []
+                
+                # 統計變數
+                up_count = 0
+                down_count = 0
+                total_contribution = 0
+                
                 progress_bar = st.progress(0)
                 
                 for i, row in top_10.iterrows():
@@ -301,31 +308,71 @@ def page_etf_analysis():
                     # 抓取「即時」漲跌幅
                     pct_chg, vol_chg = get_institutional_proxy(code)
                     contribution = weight * pct_chg
+                    total_contribution += contribution
+                    
+                    if pct_chg > 0: up_count += 1
+                    if pct_chg < 0: down_count += 1
                     
                     realtime_data.append({
                         "代號": code,
                         "名稱": name,
-                        "權重(%)": weight,
-                        "今日漲跌(%)": pct_chg,
+                        "權重": f"{weight}%",
+                        "漲跌幅": pct_chg, # 留著數字做顏色
+                        "漲跌": f"{pct_chg}%", # 顯示用
                         "主力動向": "🔥 買進" if pct_chg > 0 and vol_chg > 0 else "🧊 賣出" if pct_chg < 0 else "➖ 觀望",
-                        "對ETF影響力": contribution
+                        "貢獻度": contribution
                     })
                     progress_bar.progress((i + 1) / 10)
                 
-                # 3. 顯示結果
+                # 3. 決策儀表板 (重點優化)
+                st.markdown("---")
+                
+                # 計算市場廣度分數 (0~10分)
+                breadth_score = up_count 
+                
+                c1, c2, c3 = st.columns(3)
+                c1.metric("📈 上漲家數", f"{up_count} 家", delta="多方", delta_color="normal")
+                c2.metric("📉 下跌家數", f"{down_count} 家", delta="空方", delta_color="inverse")
+                
+                # 總結訊號
+                signal = ""
+                signal_color = ""
+                if total_contribution > 0.5 and up_count >= 6:
+                    signal = "🔥 強力多頭 (適合積極進場)"
+                    signal_color = "red" # 台股紅是漲
+                elif total_contribution > 0 and up_count >= 4:
+                    signal = "🌤️ 偏多震盪 (拉回找買點)"
+                    signal_color = "orange"
+                elif total_contribution < 0 and down_count >= 6:
+                    signal = "🌧️ 空方控盤 (現金為王)"
+                    signal_color = "green" # 台股綠是跌
+                else:
+                    signal = "☁️ 盤整觀望 (多看少做)"
+                    signal_color = "gray"
+                    
+                c3.markdown(f"### 訊號：<span style='color:{signal_color}'>{signal}</span>", unsafe_allow_html=True)
+
+                # 4. 詳細數據表
                 res_df = pd.DataFrame(realtime_data)
-                total_force = res_df['對ETF影響力'].sum()
                 
-                col1, col2 = st.columns(2)
-                col1.metric("ETF 前十大權重佔比", f"{res_df['權重(%)'].sum():.1f}%")
-                col2.metric("推估今日多空力道", f"{total_force:.2f}", delta="多頭強勢" if total_force > 1 else "空頭賣壓" if total_force < -1 else "震盪整理")
+                # 使用 Pandas Styler 進行更科學的視覺化
+                def color_pct(val):
+                    color = 'red' if val > 0 else 'green' if val < 0 else 'white'
+                    return f'color: {color}'
                 
-                st.dataframe(res_df.style.background_gradient(subset=['今日漲跌(%)'], cmap='RdYlGn'), use_container_width=True)
-                st.caption("註：主力動向基於即時量價運算，ETF影響力為「權重 x 漲跌幅」。")
+                st.dataframe(
+                    res_df.style.map(color_pct, subset=['漲跌幅']),
+                    column_config={
+                        "漲跌幅": st.column_config.NumberColumn(format="%.2f%%"),
+                        "貢獻度": st.column_config.ProgressColumn(format="%.2f", min_value=-5, max_value=5),
+                    },
+                    use_container_width=True
+                )
+                
+                st.info(f"💡 **投資心法**：當「上漲家數」大於 7 家且訊號為「強力多頭」時，是勝率最高的進場點。若訊號為「空方控盤」，請嚴格執行停損。")
                 
             else:
                 st.error("❌ 系統忙碌中，請稍後再試。")
-
 # --- 頁面 3: 蒙地卡羅模擬 ---
 def page_monte_carlo():
     st.title("🎲 蒙地卡羅股價預測")
@@ -504,5 +551,6 @@ with st.sidebar.expander("📊 網站流量資訊", expanded=False):
     st.image("https://visitor-badge.laobi.icu/badge?page_id=pro_quant_platform_v5", caption="總瀏覽人次")
     st.caption(f"📅 日期：{now.strftime('%Y-%m-%d')}")
     st.image("https://visitor-badge.laobi.icu/badge?page_id=pro_quant_platform_v4", caption="總瀏覽人次")
+
 
 
