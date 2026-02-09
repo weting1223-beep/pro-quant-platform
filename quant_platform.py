@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import datetime
 import time
+import requests # 新增：用來發送網路請求
 
 # --- 1. 頁面基礎設定 ---
 st.set_page_config(
@@ -15,10 +16,17 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- 2. 側邊欄導航 (選單優先) ---
+# --- 2. 側邊欄導航 (新增 ETF 選項) ---
 st.sidebar.title("🧭 導航選單")
-# 這裡加入了蒙地卡羅模擬的選項
-page = st.sidebar.radio("前往頁面", ["📈 量化回測分析", "🎲 蒙地卡羅模擬", "🧬 FFT 週期分析", "📊 基本面數據", "📚 投資百科辭典", "🎧 財經資源"])
+page = st.sidebar.radio("前往頁面", [
+    "📈 量化回測分析", 
+    "🦅 ETF 籌碼透視",   # 新增的頁面
+    "🎲 蒙地卡羅模擬", 
+    "🧬 FFT 週期分析", 
+    "📊 基本面數據", 
+    "📚 投資百科辭典", 
+    "🎧 財經資源"
+])
 
 st.sidebar.markdown("---")
 
@@ -41,6 +49,48 @@ def get_stock_info(ticker):
     except:
         return {}
 
+# --- 新增核心函數：爬取 ETF 成分股 (MoneyDJ) ---
+@st.cache_data(ttl=3600*12)
+def get_etf_holdings(etf_code):
+    clean_code = etf_code.replace(".TW", "")
+    url = f"https://www.moneydj.com/ETF/X/Basic/Basic0007X.xdjhtm?etfid={clean_code}.TW"
+    
+    try:
+        # 使用 pandas 讀取網頁表格 (需要 lxml)
+        dfs = pd.read_html(url)
+        for df in dfs:
+            if "股票名稱" in df.columns and "持股權重" in df.columns:
+                df = df[['股票代號', '股票名稱', '持股權重']]
+                # 清理數據：移除 % 並轉為浮點數
+                df['持股權重'] = df['持股權重'].astype(str).str.replace('%', '', regex=False)
+                df['持股權重'] = pd.to_numeric(df['持股權重'], errors='coerce')
+                return df
+        return pd.DataFrame()
+    except Exception as e:
+        return pd.DataFrame()
+
+# --- 新增核心函數：模擬個股主力動向 ---
+def get_institutional_proxy(stock_code):
+    try:
+        if not str(stock_code).endswith(".TW"):
+            stock_code = str(stock_code) + ".TW"
+        
+        stock = yf.Ticker(stock_code)
+        hist = stock.history(period="5d")
+        
+        if hist.empty:
+            return 0, 0
+            
+        latest = hist.iloc[-1]
+        prev = hist.iloc[-2] if len(hist) > 1 else latest
+        
+        change_pct = (latest['Close'] - prev['Close']) / prev['Close'] * 100
+        volume_change = latest['Volume'] - prev['Volume']
+        
+        return round(change_pct, 2), volume_change
+    except:
+        return 0, 0
+
 def calculate_indicators(df, ma_short, ma_long):
     df['MA_Short'] = df['Close'].rolling(window=ma_short).mean()
     df['MA_Long'] = df['Close'].rolling(window=ma_long).mean()
@@ -51,16 +101,14 @@ def calculate_indicators(df, ma_short, ma_long):
     df['RSI'] = 100 - (100 / (1 + rs))
     return df
 
-# --- 頁面 1: 量化回測分析 (已加入成交量 Volume) ---
+# --- 頁面 1: 量化回測分析 ---
 def page_analysis():
     st.title("📈 股票量化回測儀表板")
     st.markdown("支援 **台股 (TW)** 與 **美股 (US)**，請輸入代號開始分析。")
 
     col1, col2, col3 = st.columns([1, 1, 2])
-    
     with col1:
         market_type = st.selectbox("選擇市場", ["🇹🇼 台股 (TWD)", "🇺🇸 美股 (USD)"])
-    
     with col2:
         default_ticker = "2330" if "台股" in market_type else "NVDA"
         user_input = st.text_input("輸入股票代號", default_ticker)
@@ -94,31 +142,24 @@ def page_analysis():
                 df = calculate_indicators(df, ma_short, ma_long)
                 df['Signal'] = np.where(df['MA_Short'] > df['MA_Long'], 1.0, 0.0)
                 df['Position'] = df['Signal'].diff()
-                
                 market_ret = (df['Close'].iloc[-1] - df['Close'].iloc[0]) / df['Close'].iloc[0]
                 
-                # --- 繪圖區塊 (已升級加入成交量) ---
                 fig = make_subplots(rows=3, cols=1, shared_xaxes=True, 
                                     row_heights=[0.6, 0.2, 0.2], vertical_spacing=0.03,
                                     subplot_titles=(f"{ticker} 走勢圖", "成交量", "RSI 強弱指標"))
                 
-                # Row 1: K線
                 fig.add_trace(go.Scatter(x=df.index, y=df['Close'], name="收盤價", line=dict(color='white')), row=1, col=1)
                 fig.add_trace(go.Scatter(x=df.index, y=df['MA_Short'], name=f"MA {ma_short}", line=dict(color='yellow', width=1)), row=1, col=1)
                 fig.add_trace(go.Scatter(x=df.index, y=df['MA_Long'], name=f"MA {ma_long}", line=dict(color='cyan', width=1)), row=1, col=1)
                 
-                # Row 1: 買賣訊號
                 buys = df[df['Position'] == 1]
                 sells = df[df['Position'] == -1]
                 fig.add_trace(go.Scatter(x=buys.index, y=df.loc[buys.index]['Close'], mode='markers', marker=dict(symbol='triangle-up', color='lime', size=15), name='買進'), row=1, col=1)
                 fig.add_trace(go.Scatter(x=sells.index, y=df.loc[sells.index]['Close'], mode='markers', marker=dict(symbol='triangle-down', color='red', size=15), name='賣出'), row=1, col=1)
 
-                # Row 2: 成交量 (新增)
-                # 漲紅跌綠 (台股習慣)，若需美股習慣(漲綠跌紅)可自行互換顏色
                 colors = ['red' if row['Close'] >= row['Open'] else 'green' for index, row in df.iterrows()]
                 fig.add_trace(go.Bar(x=df.index, y=df['Volume'], name="成交量", marker_color=colors), row=2, col=1)
 
-                # Row 3: RSI
                 fig.add_trace(go.Scatter(x=df.index, y=df['RSI'], name="RSI", line=dict(color='orange')), row=3, col=1)
                 fig.add_hline(y=30, row=3, col=1, line_dash="dot", line_color="gray")
                 fig.add_hline(y=70, row=3, col=1, line_dash="dot", line_color="gray")
@@ -127,7 +168,68 @@ def page_analysis():
                 st.plotly_chart(fig, use_container_width=True)
                 st.success(f"📊 區間漲跌幅 (Buy & Hold): {market_ret*100:.2f}%")
 
-# --- 頁面 2: 蒙地卡羅模擬 (補上這段缺失的程式碼) ---
+# --- 頁面 2: ETF 籌碼透視 (新增功能) ---
+def page_etf_analysis():
+    st.title("🦅 ETF 籌碼透視 (大盤預測)")
+    st.markdown("拆解 ETF 內部成分股的漲跌與權重，預判大盤動力。")
+
+    etf_list = {
+        "0050.TW": "元大台灣50 (大盤)",
+        "0056.TW": "元大高股息",
+        "00878.TW": "國泰永續高股息",
+        "00929.TW": "復華台灣科技優息",
+        "00940.TW": "元大台灣價值高息",
+        "006208.TW": "富邦台50"
+    }
+    
+    selected_etf = st.selectbox("選擇要分析的 ETF", list(etf_list.keys()), format_func=lambda x: f"{x} {etf_list[x]}")
+
+    if st.button("🔍 分析成分股動力"):
+        with st.spinner(f"正在拆解 {selected_etf} 的成分股與籌碼 (需耗時約 10 秒)..."):
+            # A. 抓成分股
+            df_holdings = get_etf_holdings(selected_etf)
+            
+            if not df_holdings.empty:
+                st.success(f"成功抓取 {len(df_holdings)} 檔成分股！正在分析前十大權重股...")
+                
+                # B. 分析前 10 大
+                top_10 = df_holdings.head(10).copy()
+                realtime_data = []
+                progress_bar = st.progress(0)
+                
+                for i, row in top_10.iterrows():
+                    code = str(row['股票代號']).strip()
+                    name = row['股票名稱']
+                    weight = row['持股權重']
+                    
+                    pct_chg, vol_chg = get_institutional_proxy(code)
+                    contribution = weight * pct_chg
+                    
+                    realtime_data.append({
+                        "代號": code,
+                        "名稱": name,
+                        "權重(%)": weight,
+                        "今日漲跌(%)": pct_chg,
+                        "主力動向": "🔥 買進" if pct_chg > 0 and vol_chg > 0 else "🧊 賣出" if pct_chg < 0 else "➖ 觀望",
+                        "對ETF影響力": contribution
+                    })
+                    progress_bar.progress((i + 1) / 10)
+                
+                # C. 顯示
+                res_df = pd.DataFrame(realtime_data)
+                total_force = res_df['對ETF影響力'].sum()
+                
+                col1, col2 = st.columns(2)
+                col1.metric("ETF 前十大權重佔比", f"{res_df['權重(%)'].sum():.1f}%")
+                col2.metric("推估今日多空力道", f"{total_force:.2f}", delta="多頭強勢" if total_force > 1 else "空頭賣壓" if total_force < -1 else "震盪整理")
+                
+                st.dataframe(res_df.style.background_gradient(subset=['今日漲跌(%)'], cmap='RdYlGn'), use_container_width=True)
+                st.caption("註：數據來源為 MoneyDJ 與 Yahoo Finance 模擬推算。")
+                
+            else:
+                st.error("無法抓取成分股資料，可能是 MoneyDJ 網站結構改變或暫時無法連線。")
+
+# --- 頁面 3: 蒙地卡羅模擬 ---
 def page_monte_carlo():
     st.title("🎲 蒙地卡羅股價預測")
     st.markdown("利用 **隨機過程 (Random Walk)** 模擬未來走勢，計算潛在的風險與報酬。")
@@ -143,14 +245,12 @@ def page_monte_carlo():
             df = get_stock_data(ticker.upper().strip(), "2023-01-01", datetime.date.today())
             
             if not df.empty:
-                # 1. 計算參數
                 log_returns = np.log(df['Close'] / df['Close'].shift(1))
                 u = log_returns.mean()
                 var = log_returns.var()
                 drift = u - (0.5 * var)
                 stdev = log_returns.std()
                 
-                # 2. 模擬
                 simulations = 50
                 Z = np.random.normal(0, 1, (days, simulations))
                 daily_returns = np.exp(drift + stdev * Z)
@@ -161,7 +261,6 @@ def page_monte_carlo():
                 for t in range(1, days):
                     price_paths[t] = price_paths[t-1] * daily_returns[t]
                 
-                # 3. 繪圖
                 fig = go.Figure()
                 for i in range(simulations):
                     fig.add_trace(go.Scatter(y=price_paths[:, i], mode='lines', opacity=0.3, showlegend=False, line=dict(width=1)))
@@ -171,13 +270,11 @@ def page_monte_carlo():
                 
                 fig.update_layout(title=f"未來 {days} 天的 50 種可能走勢模擬", template="plotly_dark", yaxis_title="預測股價")
                 st.plotly_chart(fig, use_container_width=True)
-                
                 st.success(f"統計結果：在 {simulations} 次模擬中，{days} 天後的平均價格為 **{mean_path[-1]:.2f}** 元。")
-                st.warning("⚠️ 注意：這只是數學機率模擬，不代表真實行情預測。")
             else:
                 st.error("❌ 找不到資料，請檢查代號。")
 
-# --- 頁面 3: FFT 週期分析 ---
+# --- 頁面 4: FFT 週期分析 ---
 def page_fft():
     st.title("🧬 股價頻譜分析 (FFT)")
     st.markdown("利用訊號處理技術，找出隱藏的主力操盤週期。")
@@ -219,18 +316,16 @@ def page_fft():
                 fig.update_xaxes(title_text="週期 (天數)", row=2, col=1)
                 fig.update_yaxes(title_text="強度 (Amplitude)", row=2, col=1)
                 fig.update_layout(template="plotly_dark", height=800, showlegend=True)
-                
                 st.plotly_chart(fig, use_container_width=True)
                 
                 peak_idx = np.argmax(amps[valid_mask])
                 dominant_period = periods[valid_mask][peak_idx]
                 st.success(f"🕵️‍♂️ 偵測結果：這檔股票最明顯的波動週期約為 **{dominant_period:.1f} 天**。")
 
-# --- 頁面 4: 基本面數據 ---
+# --- 頁面 5: 基本面數據 ---
 def page_fundamental():
     st.title("📊 基本面透視")
     st.markdown("快速查詢 **美股 (US)** 數據。**台股 (TW)** 因資料源限制，提供直達連結。")
-    
     ticker = st.text_input("輸入代號", "2330.TW").upper().strip()
     
     if st.button("🔍 查詢"):
@@ -250,85 +345,49 @@ def page_fundamental():
                 pb = info.get('priceToBook', 'N/A')
                 yield_val = info.get('dividendYield', 0)
                 yield_str = f"{yield_val*100:.2f}%" if (yield_val and isinstance(yield_val, (int, float))) else "N/A"
-
                 col1.metric("本益比 (PE)", pe)
                 col2.metric("每股盈餘 (EPS)", eps)
                 col3.metric("股價淨值比 (PB)", pb)
                 col4.metric("殖利率 (Yield)", yield_str)
-                st.markdown("---")
                 st.write(info.get('longBusinessSummary', '暫無資料'))
             else:
                 st.error("❌ 找不到資料。")
 
-# --- 頁面 5: 投資百科辭典 ---
+# --- 頁面 6: 投資百科辭典 ---
 def page_learn():
     st.title("📚 投資百科辭典")
-    st.markdown("收錄市場最常見的術語，不懂的詞這裡查！")
-    
     terms = {
         "📊 技術分析": {
             "KD 指標": "隨機指標，由 K 值與 D 值組成。K>D 黃金交叉通常視為買點，K<D 死亡交叉視為賣點。",
-            "RSI 相對強弱指標": "介於 0-100。通常 >70 代表市場過熱（超買），<30 代表市場過冷（超賣）。",
+            "RSI 相對強弱指標": "介於 0-100。通常 >70 代表市場過熱，<30 代表市場過冷。",
             "MACD": "平滑異同移動平均線。柱狀圖由綠轉紅代表多頭轉強。",
-            "黃金交叉": "短期均線向上穿過長期均線，視為多頭買進訊號。",
-            "死亡交叉": "短期均線向下穿過長期均線，視為空頭賣出訊號。",
-            "乖離率 (BIAS)": "股價與均線的距離。正乖離過大容易拉回，負乖離過大容易反彈。",
-            "布林通道": "由上下兩條標準差線組成。股價碰到上緣通常有壓力，碰到下緣有支撐。",
-            "K 線 (蠟燭圖)": "紀錄開盤、收盤、最高、最低價的圖形。紅色代表漲，綠色代表跌 (台股)。",
         },
         "🧬 基本面分析": {
-            "EPS (每股盈餘)": "公司每 1 股賺了多少錢。EPS 越高，通常股價越高。",
-            "PE (本益比)": "股價 / EPS。代表買這檔股票幾年可以回本。通常 <15 算便宜，>20 算貴。",
-            "ROE (股東權益報酬率)": "巴菲特最愛指標。代表公司用股東的錢賺錢的效率。通常 >15% 為優質公司。",
-            "殖利率 (Yield)": "股利 / 股價。代表存股每年的利息回報率。台股通常 4-5% 算不錯。",
-            "毛利率": "（營收-成本）/ 營收。代表產品的競爭力，越高越好。",
-            "營收 YoY": "營收年增率。跟去年同月相比成長多少，是成長股的關鍵指標。",
-            "三大法人": "外資、投信、自營商。市場上資金最大的三個玩家。",
-        },
-        "🗣️ 市場鄉民用語": {
-            "韭菜": "指散戶。容易被大戶收割，追高殺低的人。",
-            "接刀": "股價大跌時進場買進，結果繼續跌，弄得滿手血。",
-            "畢業": "賠光本金，從股市離場。",
-            "歐印 (All in)": "把所有錢都買進去。",
-            "抬轎": "買在低點，等別人進來幫你把股價推高。",
-            "套牢": "買進後股價下跌，不想認賠賣出，只好一直抱著。",
-            "停損 (Stop Loss)": "虧損到達一定程度，強制賣出以保護本金。",
-            "當沖": "當天買進當天賣出，不留股票過夜。",
+            "EPS": "每股盈餘，公司每 1 股賺了多少錢。",
+            "PE": "本益比，回本年限。",
+            "三大法人": "外資、投信、自營商。",
         }
     }
-
     category = st.selectbox("請選擇分類", list(terms.keys()))
     term = st.selectbox("請選擇詞彙", list(terms[category].keys()))
     st.info(f"### 💡 {term}\n\n{terms[category][term]}")
 
-# --- 頁面 6: 財經資源 ---
+# --- 頁面 7: 財經資源 ---
 def page_resources():
     st.title("🎧 優質財經資源推薦")
-    st.markdown("點擊連結直接前往收聽/觀看。")
-    
     col1, col2 = st.columns(2)
     with col1:
         st.subheader("🎙️ Podcast")
-        st.markdown("""
-        ### 股癌 (Gooaye)
-        台灣最紅的財經 Podcast，講話直接，適合通勤聽。
-        * [🍎 Apple Podcast](https://podcasts.apple.com/tw/podcast/%E8%82%A1%E7%99%8C/id1500839292)
-        * [🎵 Spotify](https://open.spotify.com/show/3n5nOQ73u8h1yZ9X3y2X8Q)
-        """)
-
+        st.markdown("[🍎 Apple Podcast - 股癌](https://podcasts.apple.com/tw/podcast/%E8%82%A1%E7%99%8C/id1500839292)")
     with col2:
         st.subheader("📺 YouTube")
-        st.markdown("""
-        ### 游庭皓的財經皓角
-        專注總體經濟、週期循環，數據派投資人必看。
-        * [▶️ YouTube 頻道](https://www.youtube.com/@yutinghaofinance)
-        * [🎵 Spotify](https://open.spotify.com/show/0wJw1xZ1y9x9x9x9x9x9)
-        """)
-        st.caption("註：若連結失效，請至平台搜尋名稱。")
+        st.markdown("[▶️ YouTube - 游庭皓](https://www.youtube.com/@yutinghaofinance)")
 
-# --- 主程式路由 (Router) ---
+# --- 主程式路由 ---
 if page == "📈 量化回測分析":
     page_analysis()
+elif page == "🦅 ETF 籌碼透視":  # 新增的路由
+    page_etf_analysis()
 elif page == "🎲 蒙地卡羅模擬":
     page_monte_carlo()
 elif page == "🧬 FFT 週期分析":
@@ -340,16 +399,9 @@ elif page == "📚 投資百科辭典":
 elif page == "🎧 財經資源":
     page_resources()
 
-# --- 流量統計 (移到底部角落) ---
+# --- 流量統計 ---
 st.sidebar.markdown("---")
 with st.sidebar.expander("📊 網站流量資訊", expanded=False):
     now = datetime.datetime.now()
-    date_str = now.strftime("%Y-%m-%d")
-    time_str = now.strftime("%H:%M:%S")
-    
-    st.caption(f"📅 日期：{date_str}")
-    st.caption(f"⏰ 時間：{time_str}")
-    
-    # 瀏覽計數器
-    badge_url = "https://visitor-badge.laobi.icu/badge?page_id=pro_quant_platform_v3"
-    st.image(badge_url, caption="總瀏覽人次")
+    st.caption(f"📅 日期：{now.strftime('%Y-%m-%d')}")
+    st.image("https://visitor-badge.laobi.icu/badge?page_id=pro_quant_platform_v4", caption="總瀏覽人次")
