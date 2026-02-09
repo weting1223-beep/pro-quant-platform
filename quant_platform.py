@@ -109,7 +109,9 @@ def page_analysis():
 
                 # RSI
                 fig.add_trace(go.Scatter(x=df.index, y=df['RSI'], name="RSI", line=dict(color='orange')), row=2, col=1)
-                fig.add_hlines(y=[30, 70], row=2, col=1, line_dash="dot", line_color="gray")
+                # 正確的寫法
+                fig.add_hline(y=30, row=2, col=1, line_dash="dot", line_color="gray")
+                fig.add_hline(y=70, row=2, col=1, line_dash="dot", line_color="gray")
                 
                 fig.update_layout(template="plotly_dark", height=600, title_text=f"{ticker} 技術分析圖")
                 st.plotly_chart(fig, use_container_width=True)
@@ -194,3 +196,4 @@ elif page == "🎧 財經資源推薦":
 
     page_resources()
     #
+
