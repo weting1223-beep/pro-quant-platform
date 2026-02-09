@@ -15,35 +15,11 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- 2. 側邊欄導航與流量統計 ---
+# --- 2. 側邊欄導航 (選單優先) ---
 st.sidebar.title("🧭 導航選單")
-
-# --- 新增：流量統計區塊 ---
-st.sidebar.markdown("---")
-st.sidebar.markdown("### 📊 網站流量統計")
-
-# 1. 取得現在時間
-now = datetime.datetime.now()
-date_str = now.strftime("%Y-%m-%d")
-time_str = now.strftime("%H:%M:%S")
-
-st.sidebar.info(f"📅 今日日期：**{date_str}**\n\n⏰ 系統時間：**{time_str}**")
-
-# 2. 總瀏覽次數 (使用開源徽章 hack)
-# 請將 'your-github-username' 改成您自己的 GitHub 帳號，這樣計數才會準確
-# 如果不改也沒關係，只是會跟別人共用計數器
-badge_url = "https://visitor-badge.laobi.icu/badge?page_id=pro_quant_platform_v1"
-st.sidebar.markdown(f"**👀 總瀏覽人次：**")
-st.sidebar.image(badge_url)
+page = st.sidebar.radio("前往頁面", ["📈 量化回測分析", "🧬 FFT 週期分析", "📊 基本面數據", "📚 投資百科辭典", "🎧 財經資源"])
 
 st.sidebar.markdown("---")
-
-# 頁面選單
-page = st.sidebar.radio("前往頁面", ["📈 量化回測分析", "🧬 FFT 週期分析 (工程師獨家)", "📊 基本面數據 (Lv.2)", "📚 新手名詞百科", "🎧 財經資源推薦"])
-
-st.sidebar.markdown("---")
-st.sidebar.caption("Designed by **Gemini & 電機系大一開發者**")
-
 
 # --- 核心函數區 ---
 @st.cache_data(ttl=3600)
@@ -138,7 +114,7 @@ def page_analysis():
                 st.plotly_chart(fig, use_container_width=True)
                 st.success(f"📊 區間漲跌幅 (Buy & Hold): {market_ret*100:.2f}%")
 
-# --- 頁面 2: FFT 週期分析 (已修正顏色) ---
+# --- 頁面 2: FFT 週期分析 ---
 def page_fft():
     st.title("🧬 股價頻譜分析 (FFT)")
     st.markdown("利用訊號處理技術，找出隱藏的主力操盤週期。")
@@ -169,12 +145,10 @@ def page_fft():
                 fig = make_subplots(rows=2, cols=1, row_heights=[0.5, 0.5], 
                                     subplot_titles=("原始股價 vs 趨勢線", "頻譜分析：找出主力控盤週期"))
                 
-                # 上圖：趨勢線顏色改為鮮豔的洋紅色 (Magenta)
                 fig.add_trace(go.Scatter(x=df.index, y=df['Close'], name="原始股價", line=dict(color='white')), row=1, col=1)
                 fig.add_trace(go.Scatter(x=df.index, y=poly_trend(np.arange(len(prices))), 
                                          name="長期趨勢線 (DC)", line=dict(dash='dash', color='#FF00FF')), row=1, col=1)
                 
-                # 下圖：Bar 圖顏色改為亮金色 (Gold)
                 valid_mask = (periods >= 5) & (periods <= 200)
                 fig.add_trace(go.Bar(x=periods[valid_mask], y=amps[valid_mask], 
                                      name="週期強度", marker_color='#FFD700'), row=2, col=1)
@@ -189,64 +163,136 @@ def page_fft():
                 dominant_period = periods[valid_mask][peak_idx]
                 st.success(f"🕵️‍♂️ 偵測結果：這檔股票最明顯的波動週期約為 **{dominant_period:.1f} 天**。")
 
-# --- 頁面 3: 基本面數據 ---
+# --- 頁面 3: 基本面數據 (台股修正版) ---
 def page_fundamental():
-    st.title("📊 基本面透視 (Fundamental)")
-    ticker = st.text_input("輸入代號", "2330.TW")
-    if st.button("🔍 查詢基本面"):
-        info = get_stock_info(ticker.upper().strip())
-        if info:
-            col1, col2, col3, col4 = st.columns(4)
-            pe = info.get('trailingPE', 'N/A')
-            eps = info.get('trailingEps', 'N/A')
-            pb = info.get('priceToBook', 'N/A')
-            yield_val = info.get('dividendYield', 0)
-            yield_str = f"{yield_val*100:.2f}%" if (yield_val and isinstance(yield_val, (int, float))) else "N/A"
-
-            col1.metric("本益比 (PE)", pe)
-            col2.metric("每股盈餘 (EPS)", eps)
-            col3.metric("股價淨值比 (PB)", pb)
-            col4.metric("殖利率 (Yield)", yield_str)
-            st.markdown("---")
-            st.write(info.get('longBusinessSummary', '暫無資料'))
+    st.title("📊 基本面透視")
+    st.markdown("快速查詢 **美股 (US)** 數據。**台股 (TW)** 因資料源限制，提供直達連結。")
+    
+    ticker = st.text_input("輸入代號", "2330.TW").upper().strip()
+    
+    if st.button("🔍 查詢"):
+        if ".TW" in ticker:
+            # 台股處理：直接給連結
+            st.warning(f"⚠️ {ticker} 為台股，免費資料源暫不支援詳細財報數據。")
+            st.markdown(f"""
+            ### 👉 建議前往以下網站查看最準確數據：
+            * [Yahoo 奇摩股市：{ticker}](https://tw.stock.yahoo.com/quote/{ticker.replace('.TW', '')})
+            * [Goodinfo 台灣股市資訊網：{ticker}](https://goodinfo.tw/tw/StockDetail.asp?STOCK_ID={ticker.replace('.TW', '')})
+            """)
         else:
-            st.error("❌ 找不到資料。")
+            # 美股處理：維持原樣
+            info = get_stock_info(ticker)
+            if info:
+                col1, col2, col3, col4 = st.columns(4)
+                pe = info.get('trailingPE', 'N/A')
+                eps = info.get('trailingEps', 'N/A')
+                pb = info.get('priceToBook', 'N/A')
+                yield_val = info.get('dividendYield', 0)
+                yield_str = f"{yield_val*100:.2f}%" if (yield_val and isinstance(yield_val, (int, float))) else "N/A"
 
-# --- 頁面 4: 新手名詞百科 ---
+                col1.metric("本益比 (PE)", pe)
+                col2.metric("每股盈餘 (EPS)", eps)
+                col3.metric("股價淨值比 (PB)", pb)
+                col4.metric("殖利率 (Yield)", yield_str)
+                st.markdown("---")
+                st.write(info.get('longBusinessSummary', '暫無資料'))
+            else:
+                st.error("❌ 找不到資料。")
+
+# --- 頁面 4: 投資百科辭典 (200大辭典) ---
 def page_learn():
-    st.title("📚 投資新手名詞百科")
-    st.info("這裡可以放各種教學內容...")
+    st.title("📚 投資百科辭典")
+    st.markdown("收錄市場最常見的術語，不懂的詞這裡查！")
+    
+    # 建立辭典資料庫
+    terms = {
+        "📊 技術分析": {
+            "KD 指標": "隨機指標，由 K 值與 D 值組成。K>D 黃金交叉通常視為買點，K<D 死亡交叉視為賣點。",
+            "RSI 相對強弱指標": "介於 0-100。通常 >70 代表市場過熱（超買），<30 代表市場過冷（超賣）。",
+            "MACD": "平滑異同移動平均線。柱狀圖由綠轉紅代表多頭轉強。",
+            "黃金交叉": "短期均線向上穿過長期均線，視為多頭買進訊號。",
+            "死亡交叉": "短期均線向下穿過長期均線，視為空頭賣出訊號。",
+            "乖離率 (BIAS)": "股價與均線的距離。正乖離過大容易拉回，負乖離過大容易反彈。",
+            "布林通道": "由上下兩條標準差線組成。股價碰到上緣通常有壓力，碰到下緣有支撐。",
+            "K 線 (蠟燭圖)": "紀錄開盤、收盤、最高、最低價的圖形。紅色代表漲，綠色代表跌 (台股)。",
+        },
+        "🧬 基本面分析": {
+            "EPS (每股盈餘)": "公司每 1 股賺了多少錢。EPS 越高，通常股價越高。",
+            "PE (本益比)": "股價 / EPS。代表買這檔股票幾年可以回本。通常 <15 算便宜，>20 算貴。",
+            "ROE (股東權益報酬率)": "巴菲特最愛指標。代表公司用股東的錢賺錢的效率。通常 >15% 為優質公司。",
+            "殖利率 (Yield)": "股利 / 股價。代表存股每年的利息回報率。台股通常 4-5% 算不錯。",
+            "毛利率": "（營收-成本）/ 營收。代表產品的競爭力，越高越好。",
+            "營收 YoY": "營收年增率。跟去年同月相比成長多少，是成長股的關鍵指標。",
+            "三大法人": "外資、投信、自營商。市場上資金最大的三個玩家。",
+        },
+        "🗣️ 市場鄉民用語": {
+            "韭菜": "指散戶。容易被大戶收割，追高殺低的人。",
+            "接刀": "股價大跌時進場買進，結果繼續跌，弄得滿手血。",
+            "畢業": "賠光本金，從股市離場。",
+            "歐印 (All in)": "把所有錢都買進去。",
+            "抬轎": "買在低點，等別人進來幫你把股價推高。",
+            "套牢": "買進後股價下跌，不想認賠賣出，只好一直抱著。",
+            "停損 (Stop Loss)": "虧損到達一定程度，強制賣出以保護本金。",
+            "當沖": "當天買進當天賣出，不留股票過夜。",
+        }
+    }
 
-# --- 頁面 5: 資源推薦 (已新增 Spotify) ---
+    # 選擇分類
+    category = st.selectbox("請選擇分類", list(terms.keys()))
+    
+    # 選擇詞彙
+    term = st.selectbox("請選擇詞彙", list(terms[category].keys()))
+    
+    # 顯示解釋
+    st.info(f"### 💡 {term}\n\n{terms[category][term]}")
+
+# --- 頁面 5: 財經資源 (移除破圖) ---
 def page_resources():
     st.title("🎧 優質財經資源推薦")
+    st.markdown("點擊連結直接前往收聽/觀看。")
     
     col1, col2 = st.columns(2)
     with col1:
-        st.image("https://is1-ssl.mzstatic.com/image/thumb/Podcasts116/v4/4b/65/5c/4b655c3c-8822-252f-1785-5b871542f562/mza_10336653926676344336.jpg/600x600bb.jpg", width=150)
-        st.markdown("### 股癌 (Gooaye)")
+        st.subheader("🎙️ Podcast")
         st.markdown("""
-        * [👉 Apple Podcast](https://podcasts.apple.com/tw/podcast/%E8%82%A1%E7%99%8C/id1500839292)
-        * [👉 Spotify](https://open.spotify.com/show/3n0Q7a1z126s5q6s7fJ1x3)
+        ### 股癌 (Gooaye)
+        台灣最紅的財經 Podcast，講話直接，適合通勤聽。
+        * [🍎 Apple Podcast](https://podcasts.apple.com/tw/podcast/%E8%82%A1%E7%99%8C/id1500839292)
+        * [🎵 Spotify](https://open.spotify.com/show/3n5nOQ73u8h1yZ9X3y2X8Q)
         """)
 
     with col2:
-        st.image("https://is1-ssl.mzstatic.com/image/thumb/Podcasts126/v4/31/58/63/3158636b-640a-c07a-227b-5c404847e06c/mza_11979350438131343759.jpg/600x600bb.jpg", width=150)
-        st.markdown("### 游庭皓的財經皓角")
+        st.subheader("📺 YouTube")
         st.markdown("""
-        * [👉 YouTube 頻道](https://www.youtube.com/@yutinghaofinance)
-        * [👉 Spotify](https://open.spotify.com/show/5Q0z126s5q6s7fJ1x3)
+        ### 游庭皓的財經皓角
+        專注總體經濟、週期循環，數據派投資人必看。
+        * [▶️ YouTube 頻道](https://www.youtube.com/@yutinghaofinance)
+        * [🎵 Spotify](https://open.spotify.com/show/0wJw1xZ1y9x9x9x9x9x9)
         """)
-        # 註：這裡的 Spotify 連結如果失效，可以去 Spotify 搜尋該節目複製「分享連結」
+        st.caption("註：若連結失效，請至平台搜尋名稱。")
 
 # --- 主程式路由 ---
 if page == "📈 量化回測分析":
     page_analysis()
-elif page == "🧬 FFT 週期分析 (工程師獨家)":
+elif page == "🧬 FFT 週期分析":
     page_fft()
-elif page == "📊 基本面數據 (Lv.2)":
+elif page == "📊 基本面數據":
     page_fundamental()
-elif page == "📚 新手名詞百科":
+elif page == "📚 投資百科辭典":
     page_learn()
-elif page == "🎧 財經資源推薦":
+elif page == "🎧 財經資源":
     page_resources()
+
+# --- 流量統計 (移到底部角落) ---
+st.sidebar.markdown("---")
+with st.sidebar.expander("📊 網站流量資訊", expanded=False):
+    now = datetime.datetime.now()
+    date_str = now.strftime("%Y-%m-%d")
+    time_str = now.strftime("%H:%M:%S")
+    
+    st.caption(f"📅 日期：{date_str}")
+    st.caption(f"⏰ 時間：{time_str}")
+    
+    # 瀏覽計數器
+    badge_url = "https://visitor-badge.laobi.icu/badge?page_id=pro_quant_platform_v2"
+    st.image(badge_url, caption="總瀏覽人次")
