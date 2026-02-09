@@ -49,18 +49,12 @@ def calculate_indicators(df, ma_short, ma_long):
     return df
 
 # --- 頁面 1: 量化回測分析 ---
+# --- 頁面 1: 量化回測分析 (完整修正版) ---
 def page_analysis():
-    with col3:
-        initial_capital = st.number_input("初始本金", value=1000000, step=10000)
-        
-    # --- 新增這兩行讓使用者選日期 ---
-    c_start, c_end = st.columns(2)
-    df = get_stock_data(ticker, start_date, end_date)
-    df = get_stock_data(ticker, start_date, end_date)
-    end_date = c_end.date_input("結束日期", pd.to_datetime("today"))
     st.title("📈 股票量化回測儀表板")
     st.markdown("支援 **台股 (TW)** 與 **美股 (US)**，請輸入代號開始分析。")
 
+    # 👇 這一行非常重要！如果少了它，col3 就會報錯
     col1, col2, col3 = st.columns([1, 1, 2])
     
     with col1:
@@ -79,6 +73,14 @@ def page_analysis():
     with col3:
         initial_capital = st.number_input("初始本金", value=1000000, step=10000)
 
+    # --- 新增功能：日期選擇器 (Date Picker) ---
+    st.write("---") 
+    c_start, c_end = st.columns(2)
+    with c_start:
+        start_date = st.date_input("開始日期", pd.to_datetime("2023-01-01"))
+    with c_end:
+        end_date = st.date_input("結束日期", pd.to_datetime("today"))
+
     # 參數設定
     with st.expander("🛠️ 策略參數設定 (點擊展開)"):
         c1, c2 = st.columns(2)
@@ -87,7 +89,8 @@ def page_analysis():
 
     if st.button("🚀 開始分析", use_container_width=True):
         with st.spinner(f"正在連線至全球交易所抓取 {ticker} 資料..."):
-            df = get_stock_data(ticker, "2023-01-01", datetime.date.today())
+            # 改成讀取您選的日期
+            df = get_stock_data(ticker, start_date, end_date)
             
             if df.empty or len(df) < ma_long:
                 st.error(f"❌ 找不到代號 **{ticker}** 或資料不足，請檢查代號是否正確。")
@@ -117,7 +120,8 @@ def page_analysis():
 
                 # RSI
                 fig.add_trace(go.Scatter(x=df.index, y=df['RSI'], name="RSI", line=dict(color='orange')), row=2, col=1)
-                # 正確的寫法
+                
+                # 這裡已經修正了 add_hline (單數) 的錯誤
                 fig.add_hline(y=30, row=2, col=1, line_dash="dot", line_color="gray")
                 fig.add_hline(y=70, row=2, col=1, line_dash="dot", line_color="gray")
                 
@@ -126,7 +130,6 @@ def page_analysis():
                 
                 # 績效卡片
                 st.success(f"📊 區間漲跌幅 (Buy & Hold): {market_ret*100:.2f}%")
-
 # --- 頁面 2: 新手名詞百科 ---
 def page_learn():
     st.title("📚 投資新手名詞百科")
@@ -204,5 +207,6 @@ elif page == "🎧 財經資源推薦":
 
     page_resources()
     #
+
 
 
