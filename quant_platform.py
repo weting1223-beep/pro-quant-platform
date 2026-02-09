@@ -51,22 +51,40 @@ def get_stock_info(ticker):
 
 # --- 新增核心函數：爬取 ETF 成分股 (MoneyDJ) ---
 @st.cache_data(ttl=3600*12)
+# --- 修正版核心函數：爬取 ETF 成分股 (加入偽裝 Headers) ---
+@st.cache_data(ttl=3600*12)
 def get_etf_holdings(etf_code):
     clean_code = etf_code.replace(".TW", "")
     url = f"https://www.moneydj.com/ETF/X/Basic/Basic0007X.xdjhtm?etfid={clean_code}.TW"
     
+    # 👇 關鍵修正：加入 User-Agent 標頭，偽裝成 Chrome 瀏覽器
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
+    }
+    
     try:
-        # 使用 pandas 讀取網頁表格 (需要 lxml)
-        dfs = pd.read_html(url)
-        for df in dfs:
-            if "股票名稱" in df.columns and "持股權重" in df.columns:
-                df = df[['股票代號', '股票名稱', '持股權重']]
-                # 清理數據：移除 % 並轉為浮點數
-                df['持股權重'] = df['持股權重'].astype(str).str.replace('%', '', regex=False)
-                df['持股權重'] = pd.to_numeric(df['持股權重'], errors='coerce')
-                return df
+        # 1. 先用 requests 帶 headers 去敲門
+        r = requests.get(url, headers=headers)
+        r.encoding = "utf-8" # 防止中文亂碼
+        
+        # 2. 檢查是否成功 (200 OK)
+        if r.status_code == 200:
+            # 3. 把網頁內容丟給 pandas 解析
+            dfs = pd.read_html(r.text)
+            for df in dfs:
+                if "股票名稱" in df.columns and "持股權重" in df.columns:
+                    df = df[['股票代號', '股票名稱', '持股權重']]
+                    # 清理數據
+                    df['持股權重'] = df['持股權重'].astype(str).str.replace('%', '', regex=False)
+                    df['持股權重'] = pd.to_numeric(df['持股權重'], errors='coerce')
+                    return df
+        else:
+            print(f"連線被拒絕，狀態碼：{r.status_code}")
+            return pd.DataFrame()
+            
         return pd.DataFrame()
     except Exception as e:
+        print(f"爬蟲發生錯誤: {e}")
         return pd.DataFrame()
 
 # --- 新增核心函數：模擬個股主力動向 ---
@@ -405,3 +423,4 @@ with st.sidebar.expander("📊 網站流量資訊", expanded=False):
     now = datetime.datetime.now()
     st.caption(f"📅 日期：{now.strftime('%Y-%m-%d')}")
     st.image("https://visitor-badge.laobi.icu/badge?page_id=pro_quant_platform_v4", caption="總瀏覽人次")
+
