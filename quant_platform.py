@@ -3,7 +3,6 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
-import plotly.express as px # 新增 plotly express 用於更豐富的配色
 from plotly.subplots import make_subplots
 import datetime
 import requests
@@ -16,7 +15,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ✨ 新增：建立漸層文字標題的函數 (增加活潑感)
+# ✨ 漸層文字標題函數
 def gradient_title(title, icon=""):
     st.markdown(f"""
     <h1 style='
@@ -43,9 +42,10 @@ st.sidebar.markdown("---")
 with st.sidebar.expander("📊 網站流量資訊", expanded=False):
     now = datetime.datetime.now()
     st.caption(f"📅 日期：{now.strftime('%Y-%m-%d')}")
-    st.image("https://visitor-badge.laobi.icu/badge?page_id=pro_quant_platform_v7", caption="總瀏覽人次")
+    st.image("https://visitor-badge.laobi.icu/badge?page_id=pro_quant_platform_v8_fix", caption="總瀏覽人次")
 
-# --- 核心函數區 (維持不變，省略部分以節省篇幅，功能與上一版相同) ---
+# --- 3. 核心函數區 (資料抓取與計算) ---
+
 @st.cache_data(ttl=3600)
 def get_stock_data(ticker, start, end):
     try:
@@ -62,30 +62,88 @@ def get_stock_info(ticker):
         return stock.info
     except: return {}
 
-# (此處省略 ETF 資料庫與 VPA 分析函數，請使用上一版完整的內容，此版本僅展示 UI 修改部分)
-# 為了確保程式碼可執行，這裡快速補上必要的函數 (從上一版複製)
+# --- ETF 資料庫 (完整版) ---
 def get_fallback_data(etf_code):
-    # ... (請使用上一版完整的 ETF 資料庫)
-    # 為了演示，這裡只放一個簡略版
-    if "0050" in etf_code:
-         return pd.DataFrame([
-            {"代號": "2330", "名稱": "台積電", "權重": 56.43}, {"代號": "2317", "名稱": "鴻海", "權重": 4.88},
-            {"代號": "2454", "名稱": "聯發科", "權重": 3.92}, {"代號": "2308", "名稱": "台達電", "權重": 2.21},
-            {"代號": "2382", "名稱": "廣達", "權重": 1.95}
-        ]).rename(columns={"代號": "股票代號", "名稱": "股票名稱", "權重": "持股權重"})
+    db = {
+        "0050": [{"代號": "2330", "名稱": "台積電", "權重": 56.43}, {"代號": "2317", "名稱": "鴻海", "權重": 4.88}, {"代號": "2454", "名稱": "聯發科", "權重": 3.92}, {"代號": "2308", "名稱": "台達電", "權重": 2.21}, {"代號": "2382", "名稱": "廣達", "權重": 1.95}, {"代號": "2881", "名稱": "富邦金", "權重": 1.62}, {"代號": "2412", "名稱": "中華電", "權重": 1.58}, {"代號": "2882", "名稱": "國泰金", "權重": 1.55}, {"代號": "2891", "名稱": "中信金", "權重": 1.45}, {"代號": "2303", "名稱": "聯電", "權重": 1.35}],
+        "006208": [{"代號": "2330", "名稱": "台積電", "權重": 56.43}, {"代號": "2317", "名稱": "鴻海", "權重": 4.88}, {"代號": "2454", "名稱": "聯發科", "權重": 3.92}, {"代號": "2308", "名稱": "台達電", "權重": 2.21}, {"代號": "2382", "名稱": "廣達", "權重": 1.95}, {"代號": "2881", "名稱": "富邦金", "權重": 1.62}, {"代號": "2412", "名稱": "中華電", "權重": 1.58}, {"代號": "2882", "名稱": "國泰金", "權重": 1.55}, {"代號": "2891", "名稱": "中信金", "權重": 1.45}, {"代號": "2303", "名稱": "聯電", "權重": 1.35}],
+        "0056": [{"代號": "3034", "名稱": "聯詠", "權重": 3.25}, {"代號": "2454", "名稱": "聯發科", "權重": 3.10}, {"代號": "2385", "名稱": "群光", "權重": 3.05}, {"代號": "5347", "名稱": "世界", "權重": 2.98}, {"代號": "3231", "名稱": "緯創", "權重": 2.85}, {"代號": "2379", "名稱": "瑞昱", "權重": 2.75}, {"代號": "6669", "名稱": "緯穎", "權重": 2.65}, {"代號": "2357", "名稱": "華碩", "權重": 2.55}, {"代號": "3037", "名稱": "欣興", "權重": 2.45}, {"代號": "2301", "名稱": "光寶科", "權重": 2.35}],
+        "00878": [{"代號": "2357", "名稱": "華碩", "權重": 4.15}, {"代號": "2454", "名稱": "聯發科", "權重": 3.95}, {"代號": "3702", "名稱": "大聯大", "權重": 3.85}, {"代號": "2301", "名稱": "光寶科", "權重": 3.75}, {"代號": "2382", "名稱": "廣達", "權重": 3.65}, {"代號": "2891", "名稱": "中信金", "權重": 3.55}, {"代號": "3231", "名稱": "緯創", "權重": 3.45}, {"代號": "2886", "名稱": "兆豐金", "權重": 3.25}, {"代號": "1101", "名稱": "台泥", "權重": 3.15}, {"代號": "2324", "名稱": "仁寶", "權重": 3.05}],
+        "00919": [{"代號": "2603", "名稱": "長榮", "權重": 10.5}, {"代號": "2454", "名稱": "聯發科", "權重": 9.8}, {"代號": "3034", "名稱": "聯詠", "權重": 9.5}, {"代號": "5483", "名稱": "中美晶", "權重": 9.2}, {"代號": "6176", "名稱": "瑞儀", "權重": 8.8}, {"代號": "2404", "名稱": "漢唐", "權重": 8.5}, {"代號": "3044", "名稱": "健鼎", "權重": 8.2}, {"代號": "3711", "名稱": "日月光", "權重": 8.0}, {"代號": "2385", "名稱": "群光", "權重": 7.8}, {"代號": "3293", "名稱": "鈊象", "權重": 7.5}],
+        "00929": [{"代號": "2454", "名稱": "聯發科", "權重": 5.5}, {"代號": "3034", "名稱": "聯詠", "權重": 4.2}, {"代號": "2385", "名稱": "群光", "權重": 3.8}, {"代號": "2379", "名稱": "瑞昱", "權重": 3.5}, {"代號": "6176", "名稱": "瑞儀", "權重": 3.2}, {"代號": "3702", "名稱": "大聯大", "權重": 3.1}, {"代號": "3005", "名稱": "神基", "權重": 3.0}, {"代號": "5483", "名稱": "中美晶", "權重": 2.9}, {"代號": "6239", "名稱": "力成", "權重": 2.8}, {"代號": "3044", "名稱": "健鼎", "權重": 2.7}],
+        "00940": [{"代號": "2603", "名稱": "長榮", "權重": 9.2}, {"代號": "3711", "名稱": "日月光", "權重": 4.5}, {"代號": "2454", "名稱": "聯發科", "權重": 4.2}, {"代號": "3034", "名稱": "聯詠", "權重": 4.0}, {"代號": "5483", "名稱": "中美晶", "權重": 3.8}, {"代號": "2404", "名稱": "漢唐", "權重": 3.5}, {"代號": "2385", "名稱": "群光", "權重": 3.2}, {"代號": "6176", "名稱": "瑞儀", "權重": 2.8}, {"代號": "2301", "名稱": "光寶科", "權重": 2.5}, {"代號": "3005", "名稱": "神基", "權重": 2.4}],
+        "00713": [{"代號": "1216", "名稱": "統一", "權重": 8.5}, {"代號": "3045", "名稱": "台灣大", "權重": 7.2}, {"代號": "5483", "名稱": "中美晶", "權重": 6.8}, {"代號": "2317", "名稱": "鴻海", "權重": 6.5}, {"代號": "2412", "名稱": "中華電", "權重": 6.2}, {"代號": "2357", "名稱": "華碩", "權重": 5.8}, {"代號": "4904", "名稱": "遠傳", "權重": 5.5}, {"代號": "1101", "名稱": "台泥", "權重": 5.2}, {"代號": "3034", "名稱": "聯詠", "權重": 4.8}, {"代號": "2382", "名稱": "廣達", "權重": 4.5}],
+        "00939": [{"代號": "2454", "名稱": "聯發科", "權重": 6.5}, {"代號": "3231", "名稱": "緯創", "權重": 6.2}, {"代號": "3702", "名稱": "大聯大", "權重": 5.8}, {"代號": "3034", "名稱": "聯詠", "權重": 5.5}, {"代號": "3711", "名稱": "日月光", "權重": 5.2}, {"代號": "2379", "名稱": "瑞昱", "權重": 4.9}, {"代號": "3037", "名稱": "欣興", "權重": 4.6}, {"代號": "6669", "名稱": "緯穎", "權重": 4.3}, {"代號": "3005", "名稱": "神基", "權重": 4.0}, {"代號": "3596", "名稱": "智易", "權重": 3.7}],
+        "00830": [{"代號": "NVDA", "名稱": "NVIDIA", "權重": 12.5}, {"代號": "AVGO", "名稱": "Broadcom", "權重": 9.8}, {"代號": "AMD", "名稱": "AMD", "權重": 8.5}, {"代號": "QCOM", "名稱": "Qualcomm", "權重": 6.2}, {"代號": "INTC", "名稱": "Intel", "權重": 5.8}, {"代號": "MU", "名稱": "Micron", "權重": 5.5}, {"代號": "TXN", "名稱": "TI", "權重": 5.2}, {"代號": "AMAT", "名稱": "Applied Mat", "權重": 4.8}, {"代號": "LRCX", "名稱": "Lam Res", "權重": 4.5}, {"代號": "TSM", "名稱": "TSMC ADR", "權重": 4.2}],
+        "00891": [{"代號": "2330", "名稱": "台積電", "權重": 28.5}, {"代號": "2454", "名稱": "聯發科", "權重": 15.2}, {"代號": "3711", "名稱": "日月光", "權重": 8.5}, {"代號": "3034", "名稱": "聯詠", "權重": 5.8}, {"代號": "2379", "名稱": "瑞昱", "權重": 5.2}, {"代號": "3443", "名稱": "創意", "權重": 4.8}, {"代號": "3661", "名稱": "世芯-KY", "權重": 4.5}, {"代號": "3035", "名稱": "智原", "權重": 3.5}, {"代號": "3529", "名稱": "力旺", "權重": 3.2}, {"代號": "6531", "名稱": "愛普", "權重": 2.8}],
+        "0052": [{"代號": "2330", "名稱": "台積電", "權重": 62.5}, {"代號": "2317", "名稱": "鴻海", "權重": 5.2}, {"代號": "2454", "名稱": "聯發科", "權重": 4.5}, {"代號": "2308", "名稱": "台達電", "權重": 2.8}, {"代號": "2382", "名稱": "廣達", "權重": 2.5}, {"代號": "3034", "名稱": "聯詠", "權重": 1.8}, {"代號": "3711", "名稱": "日月光", "權重": 1.6}, {"代號": "2357", "名稱": "華碩", "權重": 1.5}, {"代號": "2303", "名稱": "聯電", "權重": 1.4}, {"代號": "6669", "名稱": "緯穎", "權重": 1.3}],
+        "00881": [{"代號": "2330", "名稱": "台積電", "權重": 32.5}, {"代號": "2317", "名稱": "鴻海", "權重": 12.5}, {"代號": "2454", "名稱": "聯發科", "權重": 10.2}, {"代號": "2308", "名稱": "台達電", "權重": 5.8}, {"代號": "2382", "名稱": "廣達", "權重": 5.2}, {"代號": "3231", "名稱": "緯創", "權重": 3.5}, {"代號": "2357", "名稱": "華碩", "權重": 2.8}, {"代號": "2301", "名稱": "光寶科", "權重": 2.5}, {"代號": "3034", "名稱": "聯詠", "權重": 2.2}, {"代號": "3037", "名稱": "欣興", "權重": 2.0}],
+        "00733": [{"代號": "3017", "名稱": "奇鋐", "權重": 6.5}, {"代號": "3324", "名稱": "雙鴻", "權重": 5.8}, {"代號": "3661", "名稱": "世芯", "權重": 5.5}, {"代號": "3529", "名稱": "力旺", "權重": 5.2}, {"代號": "8996", "名稱": "高力", "權重": 4.8}, {"代號": "1513", "名稱": "中興電", "權重": 4.5}, {"代號": "1519", "名稱": "華城", "權重": 4.2}, {"代號": "3035", "名稱": "智原", "權重": 3.8}, {"代號": "6274", "名稱": "台燿", "權重": 3.5}, {"代號": "6213", "名稱": "聯茂", "權重": 3.2}]
+    }
+    key = etf_code.replace(".TW", "")
+    if key in db:
+        df = pd.DataFrame(db[key])
+        df = df.rename(columns={"代號": "股票代號", "名稱": "股票名稱", "權重": "持股權重"})
+        return df
     return pd.DataFrame()
 
+# --- 爬蟲 + Fallback ---
 @st.cache_data(ttl=3600*12)
 def get_etf_holdings(etf_code):
-    # 簡化版，直接用保底
+    clean_code = etf_code.replace(".TW", "")
+    url = f"https://www.moneydj.com/ETF/X/Basic/Basic0007X.xdjhtm?etfid={clean_code}.TW"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36",
+        "Referer": "https://www.google.com/"
+    }
+    try:
+        r = requests.get(url, headers=headers, timeout=3) 
+        if r.status_code == 200:
+            dfs = pd.read_html(r.text)
+            for df in dfs:
+                if "股票名稱" in df.columns and "持股權重" in df.columns:
+                    df = df[['股票代號', '股票名稱', '持股權重']]
+                    df['持股權重'] = df['持股權重'].astype(str).str.replace('%', '', regex=False)
+                    df['持股權重'] = pd.to_numeric(df['持股權重'], errors='coerce')
+                    return df, "🟢 即時爬蟲數據"
+    except: pass 
+
     df_fallback = get_fallback_data(etf_code)
     if not df_fallback.empty:
         return df_fallback, "🟠 內建核心持股資料庫"
     return pd.DataFrame(), "❌ 無法取得數據"
 
+# --- VPA 分析邏輯 ---
 def analyze_stock_strength(stock_code):
-    # 簡化版模擬
-    return np.random.uniform(-3, 3), np.random.uniform(0.5, 2.0), "➖ 盤整震盪"
+    try:
+        if not str(stock_code).endswith(".TW") and not str(stock_code).isalpha():
+            stock_code = str(stock_code) + ".TW"
+        
+        stock = yf.Ticker(stock_code)
+        hist = stock.history(period="10d")
+        
+        if hist.empty or len(hist) < 5:
+            return 0, 0, "➖ 資料不足"
+            
+        latest = hist.iloc[-1]
+        prev = hist.iloc[-2]
+        avg_vol = hist['Volume'].mean()
+        
+        pct_chg = (latest['Close'] - prev['Close']) / prev['Close'] * 100
+        vol_ratio = latest['Volume'] / avg_vol if avg_vol > 0 else 0
+        
+        signal = "➖ 觀望"
+        if pct_chg > 1.5 and vol_ratio > 1.2: signal = "🔴 爆量長紅 (主力大買)"
+        elif pct_chg > 0.5 and vol_ratio < 0.8: signal = "🟠 量縮價漲 (籌碼安定)"
+        elif pct_chg < -1.5 and vol_ratio > 1.2: signal = "🟢 爆量長黑 (主力出貨)"
+        elif pct_chg < -0.5 and vol_ratio < 0.8: signal = "⚪ 量縮價跌 (人氣退潮)"
+        elif pct_chg > 3.0: signal = "🔥 強勢漲停 (極強)"
+        elif pct_chg < -3.0: signal = "🧊 弱勢跌停 (極弱)"
+        else: signal = "➖ 盤整震盪"
+
+        return round(pct_chg, 2), round(vol_ratio, 1), signal
+    except:
+        return 0, 0, "❌ 錯誤"
 
 def calculate_indicators(df, ma_short, ma_long):
     df['MA_Short'] = df['Close'].rolling(window=ma_short).mean()
@@ -97,12 +155,16 @@ def calculate_indicators(df, ma_short, ma_long):
     df['RSI'] = 100 - (100 / (1 + rs))
     return df
 
-# --- 頁面 1: 量化回測分析 (圖表大升級) ---
+# --- 4. 頁面功能實作 ---
+
+# --- 頁面 1: 量化回測分析 (修復 col3 錯誤 + 視覺優化) ---
 def page_analysis():
     gradient_title("股票量化回測儀表板", "📈")
     st.markdown("支援 **台股 (TW)** 與 **美股 (US)**，請輸入代號開始分析。")
 
+    # 👇 修正重點：把 col1, col2, col3 定義清楚
     col1, col2, col3 = st.columns([1, 1, 2])
+    
     with col1:
         market_type = st.selectbox("選擇市場", ["🇹🇼 台股 (TWD)", "🇺🇸 美股 (USD)"])
     with col2:
@@ -140,52 +202,39 @@ def page_analysis():
                 df['Position'] = df['Signal'].diff()
                 market_ret = (df['Close'].iloc[-1] - df['Close'].iloc[0]) / df['Close'].iloc[0]
                 
-                # ✨ 圖表優化開始
+                # 圖表繪製
                 fig = make_subplots(rows=3, cols=1, shared_xaxes=True, 
                                     row_heights=[0.6, 0.2, 0.2], vertical_spacing=0.05,
                                     subplot_titles=(f"{ticker} 走勢圖", "成交量", "RSI 強弱指標"))
                 
-                # K線圖：均線使用霓虹色
-                fig.add_trace(go.Scatter(x=df.index, y=df['Close'], name="收盤價", line=dict(color='rgba(255, 255, 255, 0.6)', width=1)), row=1, col=1)
-                fig.add_trace(go.Scatter(x=df.index, y=df['MA_Short'], name=f"MA {ma_short}", line=dict(color='#00E5FF', width=1.5)), row=1, col=1) # 霓虹藍
-                fig.add_trace(go.Scatter(x=df.index, y=df['MA_Long'], name=f"MA {ma_long}", line=dict(color='#FF00FF', width=1.5)), row=1, col=1) # 霓虹粉
+                # K線 & 均線 (霓虹配色)
+                fig.add_trace(go.Scatter(x=df.index, y=df['Close'], name="收盤價", line=dict(color='rgba(255, 255, 255, 0.8)', width=1)), row=1, col=1)
+                fig.add_trace(go.Scatter(x=df.index, y=df['MA_Short'], name=f"MA {ma_short}", line=dict(color='#00E5FF', width=1.5)), row=1, col=1)
+                fig.add_trace(go.Scatter(x=df.index, y=df['MA_Long'], name=f"MA {ma_long}", line=dict(color='#FF00FF', width=1.5)), row=1, col=1)
                 
-                # 買賣訊號
+                # 買賣點
                 buys = df[df['Position'] == 1]
                 sells = df[df['Position'] == -1]
                 fig.add_trace(go.Scatter(x=buys.index, y=df.loc[buys.index]['Close'], mode='markers', marker=dict(symbol='triangle-up', color='#00FF00', size=12, line=dict(width=1, color='black')), name='買進'), row=1, col=1)
                 fig.add_trace(go.Scatter(x=sells.index, y=df.loc[sells.index]['Close'], mode='markers', marker=dict(symbol='triangle-down', color='#FF3333', size=12, line=dict(width=1, color='black')), name='賣出'), row=1, col=1)
 
-                # 成交量：使用稍微柔和一點的紅綠
+                # 成交量
                 colors = ['#ef5350' if row['Close'] >= row['Open'] else '#26a69a' for index, row in df.iterrows()]
                 fig.add_trace(go.Bar(x=df.index, y=df['Volume'], name="成交量", marker_color=colors, opacity=0.8), row=2, col=1)
 
-                # ✨ RSI：改成帶有透明填充的面積圖，增加層次感
-                fig.add_trace(go.Scatter(x=df.index, y=df['RSI'], name="RSI", 
-                                         line=dict(color='#FFA726'), 
-                                         fill='tozeroy', # 填充到 Y=0
-                                         fillcolor='rgba(255, 167, 38, 0.2)'), # 半透明橘色
-                                         row=3, col=1)
+                # RSI (面積圖)
+                fig.add_trace(go.Scatter(x=df.index, y=df['RSI'], name="RSI", line=dict(color='#FFA726'), fill='tozeroy', fillcolor='rgba(255, 167, 38, 0.2)'), row=3, col=1)
                 
-                # RSI 參考線
-                fig.add_hline(y=30, row=3, col=1, line_dash="dash", line_color="rgba(255,255,255,0.3)", annotation_text="超賣區 (30)", annotation_position="top left")
-                fig.add_hline(y=70, row=3, col=1, line_dash="dash", line_color="rgba(255,255,255,0.3)", annotation_text="超買區 (70)", annotation_position="bottom left")
+                # 👇 修正重點：使用 add_hline (單數)
+                fig.add_hline(y=30, row=3, col=1, line_dash="dash", line_color="rgba(255,255,255,0.3)")
+                fig.add_hline(y=70, row=3, col=1, line_dash="dash", line_color="rgba(255,255,255,0.3)")
                 
-                # 整體佈局優化
-                fig.update_layout(template="plotly_dark", height=800, 
-                                  plot_bgcolor='rgba(0,0,0,0)', # 透明背景
-                                  paper_bgcolor='rgba(0,0,0,0)',
-                                  font=dict(color='#E0E0E0'),
-                                  hovermode="x unified") # 統一十字準線
-                
-                # 移除格線，讓畫面更乾淨
-                fig.update_xaxes(showgrid=False, zeroline=False)
-                fig.update_yaxes(showgrid=True, gridcolor='rgba(255,255,255,0.1)', zeroline=False)
+                fig.update_layout(template="plotly_dark", height=800, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#E0E0E0'), hovermode="x unified")
+                fig.update_xaxes(showgrid=False)
+                fig.update_yaxes(showgrid=True, gridcolor='rgba(255,255,255,0.1)')
 
                 st.plotly_chart(fig, use_container_width=True)
-                # ✨ 圖表優化結束
-
-                # 績效顯示優化
+                
                 st.markdown(f"""
                 <div style='padding: 15px; border-radius: 10px; background: rgba(0, 180, 216, 0.1); border: 1px solid #00B4D8;'>
                     <h3 style='margin:0; color: #00B4D8;'>📊 區間漲跌幅 (Buy & Hold)</h3>
@@ -193,84 +242,162 @@ def page_analysis():
                 </div>
                 """, unsafe_allow_html=True)
 
-# --- 頁面 2: ETF 籌碼透視 (UI 優化) ---
+# --- 頁面 2: ETF 籌碼透視 (恢復完整 VPA 功能) ---
 def page_etf_analysis():
     gradient_title("ETF 籌碼透視 (PRO 版)", "🦅")
     st.markdown("### 🎯 科學選股：拆解 ETF 成分股，用「VPA 量價訊號」抓出真正的主力股。")
 
-    # (省略選單部分，請使用上一版完整的程式碼)
-    # ... 這裡假設您已經選擇了 selected_etf ...
-    selected_etf = "0050.TW" # 範例
+    category = st.selectbox("請選擇 ETF 類型", ["🏆 市值型 (大盤)", "💰 高股息 (存股)", "🚀 半導體與科技", "🏎️ 中小型 (飆股)"])
+    etf_map = {
+        "🏆 市值型 (大盤)": {"0050.TW": "元大台灣50", "006208.TW": "富邦台50"},
+        "💰 高股息 (存股)": {"0056.TW": "元大高股息", "00878.TW": "國泰永續高股息", "00919.TW": "群益精選高息", "00929.TW": "復華科技優息", "00940.TW": "元大價值高息", "00939.TW": "統一高息動能", "00713.TW": "元大高息低波"},
+        "🚀 半導體與科技": {"00830.TW": "國泰費城半導體", "00891.TW": "中信關鍵半導體", "0052.TW": "富邦科技", "00881.TW": "國泰台灣5G+"},
+        "🏎️ 中小型 (飆股)": {"00733.TW": "富邦臺灣中小"}
+    }
+    etf_list = etf_map[category]
+    selected_etf = st.selectbox("選擇要分析的 ETF", list(etf_list.keys()), format_func=lambda x: f"{x} {etf_list[x]}")
 
     if st.button("🔍 啟動 VPA 量價掃描"):
-        st.info("⚠️ 演示模式：請使用上一版完整的程式碼以啟用完整 VPA 功能。")
+        with st.spinner(f"正在對 {selected_etf} 進行成分股量價分析..."):
+            df_holdings, source_msg = get_etf_holdings(selected_etf)
+            if not df_holdings.empty:
+                st.toast(f"資料來源：{source_msg}")
+                top_10 = df_holdings.head(10).copy()
+                realtime_data = []
+                bull_force, bear_force = 0, 0
+                progress_bar = st.progress(0)
+                
+                for i, row in top_10.iterrows():
+                    code = str(row['股票代號']).strip()
+                    name = row['股票名稱']
+                    weight = row['持股權重']
+                    pct_chg, vol_ratio, signal = analyze_stock_strength(code)
+                    contribution = weight * pct_chg
+                    if pct_chg > 0: bull_force += weight
+                    if pct_chg < 0: bear_force += weight
+                    
+                    realtime_data.append({"代號": code, "名稱": name, "權重": f"{weight}%", "漲跌幅": pct_chg, "量比": f"{vol_ratio}倍", "VPA 量價訊號": signal, "貢獻度": contribution})
+                    progress_bar.progress((i + 1) / 10)
+                
+                net_force = bull_force - bear_force
+                c1, c2, c3 = st.columns(3)
+                c1.metric("🔥 多方權重", f"{bull_force:.1f}%")
+                c2.metric("🧊 空方權重", f"{bear_force:.1f}%")
+                
+                status, status_color = ("盤整", "gray")
+                if net_force > 15: status, status_color = ("全面進攻", "red")
+                elif net_force > 5: status, status_color = ("偏多操作", "orange")
+                elif net_force < -15: status, status_color = ("全面棄守", "green")
+                elif net_force < -5: status, status_color = ("偏空保守", "blue")
+                c3.markdown(f"### 總結：<span style='color:{status_color}'>{status}</span>", unsafe_allow_html=True)
 
-# --- 頁面 3: 蒙地卡羅模擬 (UI 優化) ---
+                res_df = pd.DataFrame(realtime_data)
+                def color_signal(val):
+                    color = 'white'
+                    if "爆量長紅" in val: color = '#ff4b4b'
+                    elif "爆量長黑" in val: color = '#00c853'
+                    elif "量縮價漲" in val: color = '#ffa726'
+                    return f'color: {color}; font-weight: bold;'
+
+                st.dataframe(res_df.style.map(color_signal, subset=['VPA 量價訊號']), column_config={"漲跌幅": st.column_config.NumberColumn(format="%.2f%%"), "貢獻度": st.column_config.ProgressColumn(format="%.2f", min_value=-5, max_value=5)}, use_container_width=True)
+            else: st.error("❌ 系統忙碌中，請稍後再試。")
+
+# --- 頁面 3: 蒙地卡羅模擬 (恢復功能) ---
 def page_monte_carlo():
     gradient_title("蒙地卡羅股價預測", "🎲")
-    # (功能程式碼與上一版相同，請自行補上)
-    st.write("請使用上一版完整的程式碼。")
+    st.markdown("利用 **隨機過程 (Random Walk)** 模擬未來走勢，計算潛在的風險與報酬。")
+    col1, col2 = st.columns(2)
+    with col1: ticker = st.text_input("輸入代號", "2330.TW")
+    with col2: days = st.slider("預測未來幾天?", 30, 180, 90)
+    
+    if st.button("🔮 開始模擬未來平行宇宙"):
+        with st.spinner("正在計算機率分佈..."):
+            df = get_stock_data(ticker.upper().strip(), "2023-01-01", datetime.date.today())
+            if not df.empty:
+                log_returns = np.log(df['Close'] / df['Close'].shift(1))
+                u, var = log_returns.mean(), log_returns.var()
+                drift, stdev = u - (0.5 * var), log_returns.std()
+                simulations = 50
+                Z = np.random.normal(0, 1, (days, simulations))
+                daily_returns = np.exp(drift + stdev * Z)
+                price_paths = np.zeros_like(daily_returns)
+                price_paths[0] = df['Close'].iloc[-1]
+                for t in range(1, days): price_paths[t] = price_paths[t-1] * daily_returns[t]
+                
+                fig = go.Figure()
+                for i in range(simulations): fig.add_trace(go.Scatter(y=price_paths[:, i], mode='lines', opacity=0.3, showlegend=False, line=dict(width=1)))
+                mean_path = price_paths.mean(axis=1)
+                fig.add_trace(go.Scatter(y=mean_path, mode='lines', name="平均預測路徑", line=dict(color='yellow', width=3)))
+                fig.update_layout(title=f"未來 {days} 天的 50 種可能走勢模擬", template="plotly_dark", yaxis_title="預測股價")
+                st.plotly_chart(fig, use_container_width=True)
+                st.success(f"統計結果：在 {simulations} 次模擬中，{days} 天後的平均價格為 **{mean_path[-1]:.2f}** 元。")
+            else: st.error("❌ 找不到資料，請檢查代號。")
 
-# --- 頁面 4: FFT 週期分析 (圖表配色優化) ---
+# --- 頁面 4: FFT 週期分析 (熱力圖配色) ---
 def page_fft():
     gradient_title("股價頻譜分析 (FFT)", "🧬")
     st.markdown("利用訊號處理技術，找出隱藏的主力操盤週期。")
-    
     ticker_input = st.text_input("輸入股票代號 (例如 2330.TW)", "2330.TW")
     
     if st.button("📡 開始頻譜分析"):
         with st.spinner("正在進行訊號解調與雜訊過濾..."):
             df = get_stock_data(ticker_input.upper().strip(), "2020-01-01", datetime.date.today())
-            
             if not df.empty:
-                # (省略 FFT 計算過程，請使用上一版)
-                # 假設已經算出 periods 和 amps
-                periods = np.linspace(5, 200, 100)
-                amps = np.random.uniform(0, 1, 100)
                 prices = df['Close'].values
                 trend = np.polyfit(np.arange(len(prices)), prices, 1)
                 poly_trend = np.poly1d(trend)
-
-                fig = make_subplots(rows=2, cols=1, row_heights=[0.5, 0.5], 
-                                    subplot_titles=("原始股價 vs 趨勢線", "頻譜分析：找出主力控盤週期"))
+                detrended_price = prices - poly_trend(np.arange(len(prices)))
+                n = len(detrended_price)
+                freq = np.fft.fftfreq(n)
+                fft_val = np.fft.fft(detrended_price)
+                mask = freq > 0
+                fft_theo = 2.0 * np.abs(fft_val / n)
+                freqs, amps = freq[mask], fft_theo[mask]
+                periods = 1 / freqs
                 
-                # 上圖
+                fig = make_subplots(rows=2, cols=1, row_heights=[0.5, 0.5], subplot_titles=("原始股價 vs 趨勢線", "頻譜分析：找出主力控盤週期"))
                 fig.add_trace(go.Scatter(x=df.index, y=df['Close'], name="原始股價", line=dict(color='rgba(255,255,255,0.7)')), row=1, col=1)
-                fig.add_trace(go.Scatter(x=df.index, y=poly_trend(np.arange(len(prices))), 
-                                         name="長期趨勢線 (DC)", line=dict(dash='dash', color='#FF00FF', width=2)), row=1, col=1)
+                fig.add_trace(go.Scatter(x=df.index, y=poly_trend(np.arange(len(prices))), name="長期趨勢線 (DC)", line=dict(dash='dash', color='#FF00FF', width=2)), row=1, col=1)
                 
-                # ✨ 下圖：使用熱力圖配色，強度越高越亮
                 valid_mask = (periods >= 5) & (periods <= 200)
-                fig.add_trace(go.Bar(
-                    x=periods[valid_mask], 
-                    y=amps[valid_mask], 
-                    name="週期強度",
-                    marker=dict(
-                        color=amps[valid_mask], # 顏色根據強度變化
-                        colorscale='Plasma',    # 使用 Plasma 配色 (紫->橘->黃)
-                        showscale=False
-                    )
-                ), row=2, col=1)
-                
+                fig.add_trace(go.Bar(x=periods[valid_mask], y=amps[valid_mask], name="週期強度", marker=dict(color=amps[valid_mask], colorscale='Plasma', showscale=False)), row=2, col=1)
                 fig.update_layout(template="plotly_dark", height=800, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
-                fig.update_xaxes(showgrid=False, title_text="週期 (天數)", row=2, col=1)
-                fig.update_yaxes(showgrid=True, gridcolor='rgba(255,255,255,0.1)', title_text="強度", row=2, col=1)
-                
                 st.plotly_chart(fig, use_container_width=True)
-                # (省略結果顯示文本)
+                st.success(f"🕵️‍♂️ 偵測結果：這檔股票最明顯的波動週期約為 **{periods[valid_mask][np.argmax(amps[valid_mask])]:.1f} 天**。")
 
-# --- 頁面 5, 6, 7 (UI 優化) ---
+# --- 頁面 5, 6, 7 (內容恢復) ---
 def page_fundamental():
     gradient_title("基本面透視", "📊")
-    # (功能請使用上一版)
+    st.markdown("快速查詢 **美股 (US)** 數據。**台股 (TW)** 因資料源限制，提供直達連結。")
+    ticker = st.text_input("輸入代號", "2330.TW").upper().strip()
+    if st.button("🔍 查詢"):
+        if ".TW" in ticker:
+            st.warning(f"⚠️ {ticker} 為台股，免費資料源暫不支援詳細財報數據。")
+            st.markdown(f"### 👉 建議前往：[Yahoo 奇摩股市](https://tw.stock.yahoo.com/quote/{ticker.replace('.TW', '')})")
+        else:
+            info = get_stock_info(ticker)
+            if info:
+                col1, col2, col3, col4 = st.columns(4)
+                col1.metric("本益比", info.get('trailingPE', 'N/A'))
+                col2.metric("EPS", info.get('trailingEps', 'N/A'))
+                col3.metric("PB", info.get('priceToBook', 'N/A'))
+                col4.metric("殖利率", f"{info.get('dividendYield', 0)*100:.2f}%" if info.get('dividendYield') else "N/A")
+                st.write(info.get('longBusinessSummary', '暫無資料'))
+
 def page_learn():
     gradient_title("投資百科辭典", "📚")
-    # (功能請使用上一版)
-def page_resources():
-    gradient_title("優質財經資源推薦", "🎧")
-    # (功能請使用上一版)
+    terms = {"📊 技術分析": {"KD": "隨機指標", "RSI": "相對強弱", "MACD": "平滑異同"}, "🧬 基本面": {"EPS": "每股盈餘", "PE": "本益比"}}
+    cat = st.selectbox("分類", list(terms.keys()))
+    term = st.selectbox("詞彙", list(terms[cat].keys()))
+    st.info(f"### 💡 {term}\n\n{terms[cat][term]}")
 
-# --- 主程式路由 ---
+def page_resources():
+    gradient_title("優質財經資源", "🎧")
+    c1, c2 = st.columns(2)
+    c1.markdown("### [🍎 股癌 Podcast](https://podcasts.apple.com/tw/podcast/%E8%82%A1%E7%99%8C/id1500839292)")
+    c2.markdown("### [▶️ 游庭皓 YouTube](https://www.youtube.com/@yutinghaofinance)")
+
+# --- 主程式路由 (Router) ---
 if page == "📈 量化回測分析": page_analysis()
 elif page == "🦅 ETF 籌碼透視": page_etf_analysis()
 elif page == "🎲 蒙地卡羅模擬": page_monte_carlo()
