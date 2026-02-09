@@ -50,6 +50,14 @@ def calculate_indicators(df, ma_short, ma_long):
 
 # --- 頁面 1: 量化回測分析 ---
 def page_analysis():
+    with col3:
+        initial_capital = st.number_input("初始本金", value=1000000, step=10000)
+        
+    # --- 新增這兩行讓使用者選日期 ---
+    c_start, c_end = st.columns(2)
+    df = get_stock_data(ticker, start_date, end_date)
+    df = get_stock_data(ticker, start_date, end_date)
+    end_date = c_end.date_input("結束日期", pd.to_datetime("today"))
     st.title("📈 股票量化回測儀表板")
     st.markdown("支援 **台股 (TW)** 與 **美股 (US)**，請輸入代號開始分析。")
 
@@ -196,4 +204,5 @@ elif page == "🎧 財經資源推薦":
 
     page_resources()
     #
+
 
