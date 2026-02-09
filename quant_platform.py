@@ -17,8 +17,7 @@ st.set_page_config(
 
 # --- 2. 側邊欄導航 (選單優先) ---
 st.sidebar.title("🧭 導航選單")
-page = st.sidebar.radio("前往頁面", ["📈 量化回測分析", "🧬 FFT 週期分析", "📊 基本面數據", "📚 投資百科辭典", "🎧 財經資源"])
-
+page = st.sidebar.radio("前往頁面", ["📈 量化回測分析", "🎲 蒙地卡羅模擬", "🧬 FFT 週期分析", "📊 基本面數據", "📚 投資百科辭典", "🎧 財經資源"])
 st.sidebar.markdown("---")
 
 # --- 核心函數區 ---
@@ -96,23 +95,35 @@ def page_analysis():
                 
                 market_ret = (df['Close'].iloc[-1] - df['Close'].iloc[0]) / df['Close'].iloc[0]
                 
-                fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.7, 0.3], vertical_spacing=0.03)
+                # --- 修改繪圖區塊開始 ---
+                # 1. 改成 3 列 (K線, 成交量, RSI)
+                fig = make_subplots(rows=3, cols=1, shared_xaxes=True, 
+                                    row_heights=[0.6, 0.2, 0.2], vertical_spacing=0.03,
+                                    subplot_titles=(f"{ticker} 走勢圖", "成交量", "RSI 強弱指標"))
+                
+                # 2. Row 1: K線 (維持不變)
                 fig.add_trace(go.Scatter(x=df.index, y=df['Close'], name="收盤價", line=dict(color='white')), row=1, col=1)
                 fig.add_trace(go.Scatter(x=df.index, y=df['MA_Short'], name=f"MA {ma_short}", line=dict(color='yellow', width=1)), row=1, col=1)
                 fig.add_trace(go.Scatter(x=df.index, y=df['MA_Long'], name=f"MA {ma_long}", line=dict(color='cyan', width=1)), row=1, col=1)
                 
+                # 3. Row 1: 買賣訊號 (維持不變)
                 buys = df[df['Position'] == 1]
                 sells = df[df['Position'] == -1]
                 fig.add_trace(go.Scatter(x=buys.index, y=df.loc[buys.index]['Close'], mode='markers', marker=dict(symbol='triangle-up', color='lime', size=15), name='買進'), row=1, col=1)
                 fig.add_trace(go.Scatter(x=sells.index, y=df.loc[sells.index]['Close'], mode='markers', marker=dict(symbol='triangle-down', color='red', size=15), name='賣出'), row=1, col=1)
 
-                fig.add_trace(go.Scatter(x=df.index, y=df['RSI'], name="RSI", line=dict(color='orange')), row=2, col=1)
-                fig.add_hline(y=30, row=2, col=1, line_dash="dot", line_color="gray")
-                fig.add_hline(y=70, row=2, col=1, line_dash="dot", line_color="gray")
+                # 4. Row 2: 成交量 (新增!)
+                colors = ['red' if row['Open'] - row['Close'] >= 0 else 'green' for index, row in df.iterrows()]
+                fig.add_trace(go.Bar(x=df.index, y=df['Volume'], name="成交量", marker_color=colors), row=2, col=1)
+
+                # 5. Row 3: RSI (原本的 Row 2 移下來)
+                fig.add_trace(go.Scatter(x=df.index, y=df['RSI'], name="RSI", line=dict(color='orange')), row=3, col=1)
+                fig.add_hline(y=30, row=3, col=1, line_dash="dot", line_color="gray")
+                fig.add_hline(y=70, row=3, col=1, line_dash="dot", line_color="gray")
                 
-                fig.update_layout(template="plotly_dark", height=600, title_text=f"{ticker} 技術分析圖")
+                fig.update_layout(template="plotly_dark", height=800, title_text=f"{ticker} 技術分析圖")
                 st.plotly_chart(fig, use_container_width=True)
-                st.success(f"📊 區間漲跌幅 (Buy & Hold): {market_ret*100:.2f}%")
+                # --- 修改繪圖區塊結束 ---
 
 # --- 頁面 2: FFT 週期分析 ---
 def page_fft():
@@ -272,8 +283,16 @@ def page_resources():
         st.caption("註：若連結失效，請至平台搜尋名稱。")
 
 # --- 主程式路由 ---
+# --- 主程式路由 (請檢查您的最後這段程式碼是否長這樣) ---
+
 if page == "📈 量化回測分析":
     page_analysis()
+
+# 👇 這是新加入的！
+elif page == "🎲 蒙地卡羅模擬":
+    page_monte_carlo()
+# 👆 新加入結束
+
 elif page == "🧬 FFT 週期分析":
     page_fft()
 elif page == "📊 基本面數據":
@@ -282,6 +301,52 @@ elif page == "📚 投資百科辭典":
     page_learn()
 elif page == "🎧 財經資源":
     page_resources()
+    # --- 頁面 6: 蒙地卡羅模擬 (新增功能) ---
+def page_monte_carlo():
+    st.title("🎲 蒙地卡羅股價預測")
+    st.markdown("利用 **隨機過程 (Random Walk)** 模擬未來走勢，計算潛在的風險與報酬。")
+    
+    col1, col2 = st.columns(2)
+    ticker = col1.text_input("輸入代號", "2330.TW")
+    days = col2.slider("預測未來幾天?", 30, 180, 90)
+    
+    if st.button("🔮 開始模擬未來平行宇宙"):
+        df = get_stock_data(ticker.upper().strip(), "2023-01-01", datetime.date.today())
+        
+        if not df.empty:
+            # 1. 計算日報酬率的平均與標準差
+            log_returns = np.log(df['Close'] / df['Close'].shift(1))
+            u = log_returns.mean()
+            var = log_returns.var()
+            drift = u - (0.5 * var) # 漂移項
+            stdev = log_returns.std() # 波動率
+            
+            # 2. 模擬 50 次未來的走勢
+            simulations = 50
+            Z = np.random.normal(0, 1, (days, simulations))
+            daily_returns = np.exp(drift + stdev * Z)
+            
+            price_paths = np.zeros_like(daily_returns)
+            price_paths[0] = df['Close'].iloc[-1]
+            
+            for t in range(1, days):
+                price_paths[t] = price_paths[t-1] * daily_returns[t]
+            
+            # 3. 繪圖
+            fig = go.Figure()
+            # 畫出 50 條模擬線
+            for i in range(simulations):
+                fig.add_trace(go.Scatter(y=price_paths[:, i], mode='lines', opacity=0.3, showlegend=False, line=dict(width=1)))
+            
+            # 畫出平均線
+            mean_path = price_paths.mean(axis=1)
+            fig.add_trace(go.Scatter(y=mean_path, mode='lines', name="平均預測路徑", line=dict(color='yellow', width=3)))
+            
+            fig.update_layout(title=f"未來 {days} 天的 50 種可能走勢模擬", template="plotly_dark", yaxis_title="預測股價")
+            st.plotly_chart(fig, use_container_width=True)
+            
+            st.success(f"統計結果：在 {simulations} 次模擬中，{days} 天後的平均價格為 **{mean_path[-1]:.2f}** 元。")
+            st.warning("⚠️ 注意：這只是數學機率模擬，不代表真實行情預測。")
 
 # --- 流量統計 (移到底部角落) ---
 st.sidebar.markdown("---")
@@ -296,3 +361,4 @@ with st.sidebar.expander("📊 網站流量資訊", expanded=False):
     # 瀏覽計數器
     badge_url = "https://visitor-badge.laobi.icu/badge?page_id=pro_quant_platform_v2"
     st.image(badge_url, caption="總瀏覽人次")
+
